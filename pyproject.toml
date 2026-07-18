@@ -7,6 +7,9 @@ requires-python = ">=3.11"
 dependencies = [
     "httpx",
     "python-dotenv",
+    "pydantic>=2",
+    "pyyaml",
+    "tzdata",
 ]
 
 [project.optional-dependencies]

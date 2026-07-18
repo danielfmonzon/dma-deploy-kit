@@ -1,1 +1,147 @@
-# Placeholder — the client config schema is defined in the next step. Do not fill in yet.
+# =============================================================================
+# dma-deploy-kit — example client config  (FICTIONAL: "Acme Wellness" med spa)
+# =============================================================================
+# This file is the canonical, documented example of a client config. It is the
+# schema defined in src/dma_deploy_kit/config/models.py (ClientConfig).
+#
+# Copy it to config/clients/<slug>.yaml (that directory is gitignored) and edit
+# for a real client. Unknown/extra keys are rejected on load, so a typo here
+# fails loudly instead of being silently ignored.
+#
+# Everything below is obviously made up: 555-range phone, *.example.com URLs,
+# and a fake street address.
+# =============================================================================
+
+# --- client identity ---------------------------------------------------------
+client:
+  slug: acme-wellness            # lowercase, hyphen-separated; used as the file/agent key
+  business_name: Acme Wellness   # shown/spoken; free text
+  vertical: med spa              # free-form industry label
+  timezone: America/New_York     # IANA zone; validated against the tz database
+
+# --- language profiles -------------------------------------------------------
+# One entry per language the receptionist speaks. Codes must be unique. The
+# first entry is treated as the primary language. Each profile pins the voice
+# and the opening line (greeting == Retell begin_message) for that language.
+languages:
+  - code: en-US
+    voice_id: retell-Tamsin      # a stock Retell voice
+    greeting: "Thanks for calling Acme Wellness, this is Ava. How can I help you today?"
+    language_notes: |
+      Speak natural US English. Warm, unhurried, concierge tone. Mirror the
+      caller's pace. Spell back phone numbers and emails to confirm.
+
+  - code: es-419
+    voice_id: retell-Marta       # placeholder — swap for your chosen Spanish voice
+    greeting: "Gracias por llamar a Acme Wellness, habla Ava. ¿En qué puedo ayudarle hoy?"
+    language_notes: |
+      Hable español latinoamericano neutro (es-419), con trato de "usted".
+      Cálida y sin prisa. Confirme números de teléfono y correos deletreándolos.
+
+# --- facts (the only things the agent may state as fact) ---------------------
+facts:
+  description: >
+    Acme Wellness is a boutique med spa offering facials, laser treatments, and
+    injectables. Consultations are complimentary. Licensed staff on site.
+  address: 123 Sunbeam Plaza, Suite 200, Springfield, IL 62704
+  phone: "+1-555-0142"                       # fictional 555 range
+  email: hello@acmewellness.example.com
+  hours:
+    - days: Monday–Friday
+      open: "9:00 AM"
+      close: "6:00 PM"
+    - days: Saturday
+      open: "10:00 AM"
+      close: "4:00 PM"
+    - days: Sunday
+      open: Closed
+      close: Closed
+  services:
+    - name: Signature Facial
+      description: 60-minute customized facial with a licensed esthetician.
+      price: "$150"
+    - name: Laser Hair Removal
+      description: Per-session pricing; package discounts available.
+      price: from $99
+    - name: Complimentary Consultation
+      description: 20-minute new-client consult to plan treatments.
+      # price omitted — it's free, and the field is optional
+  faq:
+    - q: Do you offer free consultations?
+      a: Yes, new-client consultations are complimentary and take about 20 minutes.
+    - q: Do I need to prepare for a laser session?
+      a: Avoid sun exposure and shave the area the day before; staff will confirm details.
+
+# --- booking -----------------------------------------------------------------
+booking:
+  url: https://acmewellness.example.com/book   # link the agent can text/share
+  sms_consent: true                            # ask permission before texting
+
+# --- escalation --------------------------------------------------------------
+escalation:
+  contact_name: Jordan                         # human the agent hands off to
+  escalate_when:
+    - Caller asks for medical or dosage advice beyond general information.
+    - Caller is upset, mentions a complication, or requests a manager.
+    - Caller wants to dispute a charge or discuss billing specifics.
+  handoff_message: >
+    Let me get Jordan, our patient coordinator, to help you with that. May I take
+    your name and the best number to reach you?
+
+# --- guardrails --------------------------------------------------------------
+# preset "medical_adjacent" turns on extra caution appropriate for health-related
+# businesses. never_say / off_limits are enforced in the prompt build step.
+guardrails:
+  preset: medical_adjacent
+  never_say:
+    - Never diagnose conditions or promise specific medical outcomes.
+    - Never claim a treatment is FDA-approved, permanent, or a guaranteed cure.
+    - Never give dosage, prescription, or post-procedure medical instructions.
+  off_limits:
+    - Insurance billing disputes
+    - Comparisons to specific competitor clinics
+
+# --- agent runtime settings --------------------------------------------------
+agent:
+  max_call_duration_ms: 600000        # 10 minutes (bounds: 60000–3600000)
+  ambient_sound: null                 # e.g. "spa" / "office"; null = none
+  enable_expressive_mode: false
+  expressive_emotion_tags: []         # e.g. [empathetic, excited]
+  pronunciation:
+    - word: Acme
+      alphabet: ipa
+      phoneme: ˈækmi
+  knowledge_base_ids: []              # Retell KB ids to attach, if any
+
+# --- post-call analysis schema (lead-capture flow) ---------------------------
+# Structured fields Retell extracts after each call. At least one field required.
+# Types: string | boolean | enum | number. "enum" requires "choices".
+post_call:
+  - name: caller_name
+    type: string
+    description: The caller's full name, if provided.
+  - name: caller_phone
+    type: string
+    description: Best callback number, digits only where possible.
+  - name: caller_email
+    type: string
+    description: Caller's email address, if provided.
+  - name: service_interest
+    type: string
+    description: Which treatment or service the caller asked about.
+  - name: appointment_urgency
+    type: enum
+    description: How soon the caller wants to be seen.
+    choices:
+      - urgent
+      - this_week
+      - flexible
+  - name: consent_to_text
+    type: boolean
+    description: Whether the caller agreed to receive an SMS with the booking link.
+  - name: is_returning_client
+    type: boolean
+    description: Whether the caller indicated they are an existing client.
+  - name: call_summary
+    type: string
+    description: One- to two-sentence summary of the call outcome and next step.
