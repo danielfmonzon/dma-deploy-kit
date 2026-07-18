@@ -18,11 +18,15 @@ client:
   business_name: Acme Wellness   # shown/spoken; free text
   vertical: med spa              # free-form industry label
   timezone: America/New_York     # IANA zone; validated against the tz database
+  assistant_name: Ava            # the persona name used in IDENTITY / SAMPLE LINES
 
 # --- language profiles -------------------------------------------------------
 # One entry per language the receptionist speaks. Codes must be unique. The
 # first entry is treated as the primary language. Each profile pins the voice
 # and the opening line (greeting == Retell begin_message) for that language.
+#
+# sample_lines are client-authored spoken examples the agent adapts (never reads
+# verbatim). Omit sample_lines entirely to fall back to engine-generated defaults.
 languages:
   - code: en-US
     voice_id: retell-Tamsin      # a stock Retell voice
@@ -30,6 +34,12 @@ languages:
     language_notes: |
       Speak natural US English. Warm, unhurried, concierge tone. Mirror the
       caller's pace. Spell back phone numbers and emails to confirm.
+    sample_lines:
+      - "Thanks for calling Acme Wellness — this is Ava. How can I help you today?"
+      - "That's a great question. I want to make sure you get the right answer, so let me have Jordan follow up with you."
+      - "I can text you our booking link so you can grab a time that works — is the number you're calling from okay?"
+      - "Let me bring in Jordan, our patient coordinator, to take care of that for you."
+      - "Thanks so much for calling Acme Wellness, Ava here — take care and we'll see you soon!"
 
   - code: es-419
     voice_id: retell-Marta       # placeholder — swap for your chosen Spanish voice
@@ -37,6 +47,12 @@ languages:
     language_notes: |
       Hable español latinoamericano neutro (es-419), con trato de "usted".
       Cálida y sin prisa. Confirme números de teléfono y correos deletreándolos.
+    sample_lines:
+      - "Gracias por llamar a Acme Wellness, le habla Ava. ¿En qué puedo ayudarle hoy?"
+      - "Muy buena pregunta. Para darle la respuesta correcta, dejo que Jordan le dé seguimiento."
+      - "Con gusto le envío por mensaje nuestro enlace de citas. ¿Está bien el número desde el que llama?"
+      - "Permítame comunicarle con Jordan, nuestra coordinadora, para ayudarle con eso."
+      - "Muchas gracias por llamar a Acme Wellness, le atendió Ava. ¡Que tenga un excelente día!"
 
 # --- facts (the only things the agent may state as fact) ---------------------
 facts:

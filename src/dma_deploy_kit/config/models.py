@@ -42,6 +42,7 @@ class ClientMeta(_Base):
     business_name: str
     vertical: str
     timezone: str
+    assistant_name: str | None = None  # persona name used in IDENTITY / SAMPLE LINES
 
     @field_validator("business_name", "vertical")
     @classmethod
@@ -78,6 +79,9 @@ class LanguageProfile(_Base):
     voice_id: str
     greeting: str  # the Retell begin_message for this language
     language_notes: str | None = None  # the LANGUAGE-section directive, optional
+    # Client-authored spoken example lines for this language; empty falls back to
+    # engine-generated defaults in the SAMPLE LINES section.
+    sample_lines: list[str] = Field(default_factory=list)
 
     @field_validator("code", "voice_id", "greeting")
     @classmethod

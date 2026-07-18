@@ -76,11 +76,29 @@ def test_determinism_byte_identical(acme):
     assert compile_prompt(acme, en) == compile_prompt(acme, en)
 
 
-def test_en_es_differ_only_in_language_section(acme):
+def test_en_es_differ_only_in_language_and_sample_lines(acme):
+    # The example configures per-language sample_lines, so EN/ES legitimately
+    # differ in both LANGUAGE and SAMPLE LINES — and nowhere else.
+    assert acme.languages[0].sample_lines and acme.languages[1].sample_lines
     prompts = compile_all(acme)
     en = parse_sections(prompts["en-US"])
     es = parse_sections(prompts["es-419"])
     assert set(en) == set(es) == set(SECTION_ORDER)
+    differing = [name for name in SECTION_ORDER if en[name] != es[name]]
+    assert differing == ["LANGUAGE", "SAMPLE LINES"]
+
+
+def test_en_es_differ_only_in_language_when_no_sample_lines(tmp_path):
+    # Without per-language sample_lines, the engine fallback is language-neutral,
+    # so the two languages differ only in LANGUAGE.
+    data = _minimal_config_dict()
+    data["languages"].append(
+        {"code": "es-419", "voice_id": "retell-Marta", "greeting": "Hola."}
+    )
+    config = _load_from_dict(tmp_path, data)
+    prompts = compile_all(config)
+    en = parse_sections(prompts["en-US"])
+    es = parse_sections(prompts["es-419"])
     differing = [name for name in SECTION_ORDER if en[name] != es[name]]
     assert differing == ["LANGUAGE"]
 
@@ -125,7 +143,8 @@ def test_booking_url_absent_degrades_gracefully(tmp_path):
     data = _minimal_config_dict()  # no booking block at all
     config = _load_from_dict(tmp_path, data)
     booking = parse_sections(compile_prompt(config, config.languages[0]))["BOOKING / SMS CONSENT"]
-    assert "not available" in booking.lower()
+    assert "not set up for this line" in booking.lower()
+    assert "do not promise a link" in booking.lower()
 
 
 def test_medical_adjacent_preset_injects_engine_block(acme):
@@ -182,6 +201,52 @@ def test_escalation_contact_appears(acme):
     prompt = compile_prompt(acme, acme.languages[0])
     esc = parse_sections(prompt)["ESCALATION"]
     assert acme.escalation.contact_name in esc
+
+
+def test_assistant_name_in_identity_when_set(acme):
+    assert acme.client.assistant_name == "Ava"
+    identity = parse_sections(compile_prompt(acme, acme.languages[0]))["IDENTITY"]
+    assert "Ava" in identity
+
+
+def test_identity_generic_when_no_assistant_name(tmp_path):
+    data = _minimal_config_dict()  # no assistant_name
+    config = _load_from_dict(tmp_path, data)
+    assert config.client.assistant_name is None
+    identity = parse_sections(compile_prompt(config, config.languages[0]))["IDENTITY"]
+    assert "You are the virtual phone receptionist for Tiny Co" in identity
+    assert "None" not in identity
+
+
+def test_client_sample_lines_render(acme):
+    prompts = compile_all(acme)
+    en_samples = parse_sections(prompts["en-US"])["SAMPLE LINES"]
+    for line in acme.languages[0].sample_lines:
+        assert line in en_samples
+    es_samples = parse_sections(prompts["es-419"])["SAMPLE LINES"]
+    for line in acme.languages[1].sample_lines:
+        assert line in es_samples
+    # a configured EN line should NOT leak into the ES section
+    assert acme.languages[0].sample_lines[0] not in es_samples
+
+
+def test_sample_lines_engine_fallback_uses_assistant_name(tmp_path):
+    # no sample_lines, but assistant_name set -> engine defaults name the persona
+    data = _minimal_config_dict()
+    data["client"]["assistant_name"] = "Robin"
+    config = _load_from_dict(tmp_path, data)
+    samples = parse_sections(compile_prompt(config, config.languages[0]))["SAMPLE LINES"]
+    assert "Opening:" in samples  # engine default framing
+    assert "Robin" in samples
+    assert "Tiny Co" in samples
+
+
+def test_sample_lines_engine_fallback_without_assistant_name(tmp_path):
+    data = _minimal_config_dict()  # no sample_lines, no assistant_name
+    config = _load_from_dict(tmp_path, data)
+    samples = parse_sections(compile_prompt(config, config.languages[0]))["SAMPLE LINES"]
+    assert "Opening:" in samples
+    assert "Tiny Co" in samples
 
 
 def test_helper_isolation():
