@@ -16,6 +16,7 @@ from dma_deploy_kit.postcall import (
     DebugAlert,
     EmailAlert,
     build_signature,
+    check_signature,
     create_app,
     default_alert_factory,
     format_lead_text,
@@ -99,6 +100,25 @@ def test_signature_rejects_absent_and_malformed():
     assert not verify_signature(raw, None, KEY)
     assert not verify_signature(raw, "", KEY)
     assert not verify_signature(raw, "garbage", KEY)
+
+
+def test_check_signature_diagnostics():
+    raw = b"body"
+    now = 2_000_000_000_000
+    # absent header
+    c = check_signature(raw, None, KEY, now_ms=now)
+    assert c.header_present is False and c.valid is False
+    # valid
+    sig = build_signature(raw, KEY, now)
+    c = check_signature(raw, sig, KEY, now_ms=now)
+    assert c.valid and c.digest_match and c.skew_ms == 0 and c.parsed_timestamp == now
+    # stale but digest matches -> digest_match True, valid False, skew reported
+    old = now - 10 * 60 * 1000
+    c = check_signature(raw, build_signature(raw, KEY, old), KEY, now_ms=now)
+    assert c.digest_match is True and c.valid is False and c.skew_ms == 10 * 60 * 1000
+    # wrong key -> digest_match False
+    c = check_signature(raw, build_signature(raw, "other", now), KEY, now_ms=now)
+    assert c.digest_match is False and c.valid is False
 
 
 def test_signature_rejects_stale_timestamp():

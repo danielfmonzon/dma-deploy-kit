@@ -76,9 +76,18 @@ def test_desired_state_per_language(acme):
     assert [t["name"] for t in en["llm"]["general_tools"]] == ["end_call"]
 
 
-def test_no_webhook_url_in_payload(acme):
+def test_no_webhook_url_when_base_unset(acme, monkeypatch):
+    monkeypatch.delenv("WEBHOOK_BASE_URL", raising=False)
     for st in build_desired_state(acme):
         assert "webhook_url" not in st["agent"]
+        assert "webhook_url" not in st["llm"]
+
+
+def test_webhook_url_from_env(acme, monkeypatch):
+    monkeypatch.setenv("WEBHOOK_BASE_URL", "https://tunnel.example.com/")
+    for st in build_desired_state(acme):
+        # trailing slash on the base is normalized; single /webhook/retell suffix
+        assert st["agent"]["webhook_url"] == "https://tunnel.example.com/webhook/retell"
         assert "webhook_url" not in st["llm"]
 
 

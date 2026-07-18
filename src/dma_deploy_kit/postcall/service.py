@@ -22,7 +22,7 @@ from fastapi import FastAPI, HTTPException, Request
 from ..config.models import ClientMeta
 from .alerts import AlertSink, default_alert_factory
 from .lead import AgentRegistry, parse_lead
-from .signature import DEFAULT_TOLERANCE_MS, verify_signature
+from .signature import DEFAULT_TOLERANCE_MS, check_signature
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +59,16 @@ def create_app(
     async def retell_webhook(request: Request) -> dict:
         raw = await request.body()
         signature = request.headers.get("x-retell-signature")
-        if not verify_signature(raw, signature, key, tolerance_ms=tolerance_ms):
-            logger.warning("rejected webhook: absent or invalid X-Retell-Signature")
+        check = check_signature(raw, signature, key, tolerance_ms=tolerance_ms)
+        if not check.valid:
+            logger.warning(
+                "webhook signature rejected: header_present=%s parsed_timestamp=%s "
+                "skew_ms=%s digest_match=%s",
+                check.header_present,
+                check.parsed_timestamp,
+                check.skew_ms,
+                check.digest_match,
+            )
             raise HTTPException(status_code=401, detail="invalid signature")
 
         try:
@@ -90,5 +98,10 @@ def create_app(
 
 
 def get_app() -> FastAPI:
-    """ASGI factory entry point for uvicorn (--factory)."""
+    """ASGI factory entry point for uvicorn (--factory). Loads .env for the key."""
+    from pathlib import Path
+
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parents[3] / ".env")
     return create_app()

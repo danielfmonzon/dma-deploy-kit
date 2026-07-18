@@ -144,6 +144,12 @@ def build_desired_state(config: ClientConfig) -> list[dict]:
         }
         if config.agent.ambient_sound is not None:
             agent_payload["ambient_sound"] = config.agent.ambient_sound
+        # Point the agent's post-call webhook at the shared service when a base URL
+        # is configured; the service resolves client ownership by agent_id. When
+        # unset, omit the field entirely (Retell leaves it unchanged/empty).
+        webhook_base = os.environ.get("WEBHOOK_BASE_URL", "").strip()
+        if webhook_base:
+            agent_payload["webhook_url"] = f"{webhook_base.rstrip('/')}/webhook/retell"
 
         llm_payload: dict = {
             **LLM_DEFAULTS,

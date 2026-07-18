@@ -36,3 +36,6 @@ config/clients/
 
 # Raw client config dumps (captured from provider APIs)
 capture/
+
+# Local webhook service logs
+postcall.log
