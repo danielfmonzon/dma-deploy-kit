@@ -25,3 +25,6 @@ jobs:
 
       - name: Pytest
         run: pytest
+
+      - name: Static prompt policy checks (eval Layer 1)
+        run: python evals/run_static.py
