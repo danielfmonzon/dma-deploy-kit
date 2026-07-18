@@ -15,11 +15,14 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from dotenv import load_dotenv
 
 from dma_deploy_kit.agent.deploy import DeployError, RetellClient, apply, plan
 from dma_deploy_kit.config import ClientConfigError, load_client_config
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _fmt_agent(agent: dict) -> list[str]:
@@ -87,7 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("config", help="Path to a client config YAML file.")
     parser.add_argument("--apply", action="store_true", help="Execute the plan (mutations!).")
     args = parser.parse_args(argv)
-    load_dotenv()  # pick up RETELL_API_KEY from .env when present
+    load_dotenv(REPO_ROOT / ".env")  # pick up RETELL_API_KEY from .env when present
 
     try:
         config = load_client_config(args.config)

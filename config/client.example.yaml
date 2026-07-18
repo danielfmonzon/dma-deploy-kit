@@ -42,7 +42,7 @@ languages:
       - "Thanks so much for calling Acme Wellness, Ava here — take care and we'll see you soon!"
 
   - code: es-419
-    voice_id: retell-Marta       # placeholder — swap for your chosen Spanish voice
+    voice_id: cartesia-Hailey-Spanish-latin-america   # real Latin-America Spanish voice
     greeting: "Gracias por llamar a Acme Wellness, habla Ava. ¿En qué puedo ayudarle hoy?"
     language_notes: |
       Hable español latinoamericano neutro (es-419), con trato de "usted".

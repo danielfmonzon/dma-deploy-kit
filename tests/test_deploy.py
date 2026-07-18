@@ -59,10 +59,10 @@ def test_desired_state_per_language(acme):
     assert [s["code"] for s in states] == ["en-US", "es-419"]
 
     en, es = states
-    # correct voice per language
-    assert en["agent"]["voice_id"] == "retell-Tamsin"
-    assert es["agent"]["voice_id"] == "REDACTED-VOICE-ID" or \
-        es["agent"]["voice_id"] == "retell-Marta"
+    # correct voice per language (each pulled from its own language profile)
+    assert en["agent"]["voice_id"] == acme.languages[0].voice_id == "retell-Tamsin"
+    assert es["agent"]["voice_id"] == acme.languages[1].voice_id
+    assert en["agent"]["voice_id"] != es["agent"]["voice_id"]
     # agent_name convention
     assert en["agent_name"] == "Acme Wellness — en-US"
     # compiled prompt embedded, and it is the per-language prompt
