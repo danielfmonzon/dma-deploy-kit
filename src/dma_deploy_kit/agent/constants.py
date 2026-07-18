@@ -8,10 +8,10 @@ the kit's engine defaults and are applied to every deployed agent.
 Extraction is documented in scripts / the field report; the literals below were
 lifted verbatim from the captured configs.
 
-⚠ DTMF NOTE: production has ``allow_user_dtmf = True`` (see AGENT_DEFAULTS). This
-contradicts the compiled prompt line "You cannot detect keypad presses." We keep
-the production value here and change nothing yet — this discrepancy is flagged for
-a human decision, not silently "fixed".
+DTMF NOTE: production has ``allow_user_dtmf = True`` (see AGENT_DEFAULTS). Ruling:
+keep DTMF enabled to match production, and align the prompt — the SPEAKING RULES
+section now tells the agent that keyed digits may arrive as typed input and to read
+them back to confirm, rather than claiming it cannot detect keypresses.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from __future__ import annotations
 # --- agent-level defaults (identical across all three captured agents) -------
 AGENT_DEFAULTS: dict = {
     "channel": "voice",
-    "allow_user_dtmf": True,  # ⚠ production value; contradicts the "no keypad" prompt line
+    "allow_user_dtmf": True,  # production value; prompt aligned (SPEAKING RULES reads digits back)
     "user_dtmf_options": {},
     "interruption_sensitivity": 0.9,
     "voice_speed": 1,

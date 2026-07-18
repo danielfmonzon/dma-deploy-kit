@@ -82,6 +82,35 @@ def test_no_webhook_url_in_payload(acme):
         assert "webhook_url" not in st["llm"]
 
 
+def test_post_call_analysis_data_mapped(acme):
+    st = build_desired_state(acme)[0]
+    pcad = st["agent"]["post_call_analysis_data"]
+    # all 8 Acme fields present, in order, by name
+    assert [d["name"] for d in pcad] == [f.name for f in acme.post_call]
+    assert len(pcad) == 8
+    # Retell shape: every item has exactly type/name/description (+choices for enum)
+    for item in pcad:
+        assert set(item) <= {"type", "name", "description", "choices"}
+        assert {"type", "name", "description"} <= set(item)
+        assert item["type"] in {"string", "boolean", "enum", "number"}
+        assert "source" not in item  # kit-side concept, not sent to Retell
+    # exactly one enum field, and it carries a non-empty choices list
+    enums = [d for d in pcad if d["type"] == "enum"]
+    assert len(enums) == 1
+    assert enums[0]["name"] == "appointment_urgency"
+    assert enums[0]["choices"] == ["urgent", "this_week", "flexible"]
+    # boolean/number/string fields carry no choices key
+    for item in pcad:
+        if item["type"] != "enum":
+            assert "choices" not in item
+
+
+def test_post_call_analysis_model_from_constants(acme):
+    model = build_desired_state(acme)[0]["agent"]["post_call_analysis_model"]
+    assert model == constants.AGENT_DEFAULTS["post_call_analysis_model"]
+    assert model == "gpt-4.1"
+
+
 def test_multi_language_sets_language_list(acme):
     states = build_desired_state(acme)
     for st in states:

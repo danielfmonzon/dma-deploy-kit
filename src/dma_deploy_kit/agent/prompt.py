@@ -65,8 +65,8 @@ _SPEAKING_RULES = _bullets([
     "then wrap up.",
     "If a caller has plainly reached the wrong place, tell them gently, share the right "
     "contact when you know it, and let them go without any pressure.",
-    "You cannot detect keypad presses, so if a caller tries to key something in, ask "
-    "them kindly to say it aloud instead.",
+    "If the caller keys numbers in on their phone, those may reach you as typed digits, "
+    "so read whatever comes through back to them and confirm it is right.",
 ])
 
 _STYLE_VOICE = _bullets([

@@ -96,6 +96,23 @@ class RetellClient:
 # --------------------------------------------------------------------------- #
 # desired state
 # --------------------------------------------------------------------------- #
+def _post_call_analysis_data(config: ClientConfig) -> list[dict]:
+    """Map config.post_call to Retell's post_call_analysis_data shape.
+
+    Retell AnalysisData items are {type, name, description}, with an additional
+    non-empty `choices` list for enums. boolean/number/string need no extra
+    fields. Our per-field `source` (caller/derived) is a kit-side concept and is
+    not part of the Retell payload.
+    """
+    out: list[dict] = []
+    for field in config.post_call:
+        entry = {"type": field.type, "name": field.name, "description": field.description}
+        if field.type == "enum":
+            entry["choices"] = list(field.choices or [])
+        out.append(entry)
+    return out
+
+
 def build_desired_state(config: ClientConfig) -> list[dict]:
     """Build the desired agent + retell-llm payload for each language profile.
 
@@ -122,6 +139,8 @@ def build_desired_state(config: ClientConfig) -> list[dict]:
             "enable_expressive_mode": config.agent.enable_expressive_mode,
             "expressive_emotion_tags": list(config.agent.expressive_emotion_tags),
             "pronunciation_dictionary": [p.model_dump() for p in config.agent.pronunciation],
+            # post_call_analysis_model comes from AGENT_DEFAULTS above.
+            "post_call_analysis_data": _post_call_analysis_data(config),
         }
         if config.agent.ambient_sound is not None:
             agent_payload["ambient_sound"] = config.agent.ambient_sound
