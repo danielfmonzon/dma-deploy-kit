@@ -30,9 +30,9 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Secrets and private client configs
+# Secrets and private client configs (raw configs + generated lockfiles)
 .env
-config/clients/*.yaml
+config/clients/
 
 # Raw client config dumps (captured from provider APIs)
 capture/
