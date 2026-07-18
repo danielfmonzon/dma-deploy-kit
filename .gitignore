@@ -33,3 +33,6 @@ Thumbs.db
 # Secrets and private client configs
 .env
 config/clients/*.yaml
+
+# Raw client config dumps (captured from provider APIs)
+capture/
