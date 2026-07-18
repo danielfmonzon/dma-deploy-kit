@@ -19,6 +19,8 @@ client:
   vertical: med spa              # free-form industry label
   timezone: America/New_York     # IANA zone; validated against the tz database
   assistant_name: Ava            # the persona name used in IDENTITY / SAMPLE LINES
+  alert_email: leads@acmewellness.example.com   # post-call lead alerts sent here (optional;
+                                                # omit to log via DebugAlert instead)
 
 # --- language profiles -------------------------------------------------------
 # One entry per language the receptionist speaks. Codes must be unique. The

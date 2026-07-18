@@ -43,6 +43,7 @@ class ClientMeta(_Base):
     vertical: str
     timezone: str
     assistant_name: str | None = None  # persona name used in IDENTITY / SAMPLE LINES
+    alert_email: str | None = None  # post-call lead alerts go here; DebugAlert if unset
 
     @field_validator("business_name", "vertical")
     @classmethod
