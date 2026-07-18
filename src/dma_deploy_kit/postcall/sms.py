@@ -85,8 +85,11 @@ def normalize_us_phone(raw: object) -> str | None:
 # message template (engine-owned)
 # --------------------------------------------------------------------------- #
 def booking_sms_body(business_name: str, booking_url: str) -> str:
-    """Friendly one-liner with the business name and booking link."""
-    return f"Hi from {business_name}! Book your appointment here: {booking_url}"
+    """Friendly booking message with the business name, link, and STOP opt-out line."""
+    return (
+        f"Hi from {business_name}! Book your appointment here: {booking_url}\n"
+        "Reply STOP to opt out."
+    )
 
 
 # --------------------------------------------------------------------------- #

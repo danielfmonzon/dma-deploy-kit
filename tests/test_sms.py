@@ -88,6 +88,7 @@ def test_booking_sms_body_under_160_for_acme(acme):
     body = booking_sms_body(acme.client.business_name, acme.booking.url)
     assert acme.client.business_name in body
     assert acme.booking.url in body
+    assert "Reply STOP to opt out." in body  # opt-out compliance line
     assert len(body) < 160, f"body is {len(body)} chars"
 
 
