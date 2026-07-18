@@ -14,6 +14,7 @@ printing their text, so the output is safe to share (no secrets, no prompt text)
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -66,16 +67,31 @@ def _fmt_diff(label: str, diff: dict) -> list[str]:
 
 
 SMS_CONSENT_WARNING = (
-    "!!  WARNING: booking.sms_consent is TRUE, but no SMS backend exists yet.\n"
+    "!!  WARNING: booking.sms_consent is TRUE, but no SMS backend is configured.\n"
     "!!  The agent will offer/promise to text callers (e.g. the booking link), but\n"
-    "!!  those texts will NOT be sent — there is no SMS sender wired up.\n"
-    "!!  Real clients should set sms_consent: false until the SMS sender ships."
+    "!!  those texts will NOT be sent — no Twilio credentials are set.\n"
+    "!!  Real clients should set sms_consent: false until SMS is configured."
 )
+
+SMS_CONSENT_NOTE_CONFIGURED = (
+    "note: booking.sms_consent is TRUE and Twilio SMS is configured. Booking texts\n"
+    "      only send while the post-call webhook service is running and the SMS\n"
+    "      ledger (var/sms_ledger.jsonl) is writable; sends are consent-gated and\n"
+    "      deduplicated per call_id."
+)
+
+TWILIO_ENV_KEYS = ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER")
+
+
+def _twilio_configured() -> bool:
+    return all(os.environ.get(k, "").strip() for k in TWILIO_ENV_KEYS)
 
 
 def sms_consent_warning(config) -> str | None:
-    """Return the SMS-consent warning banner when the config enables sms_consent."""
-    return SMS_CONSENT_WARNING if config.booking.sms_consent else None
+    """SMS-consent banner: hard warning when Twilio is absent, softer note when set."""
+    if not config.booking.sms_consent:
+        return None
+    return SMS_CONSENT_NOTE_CONFIGURED if _twilio_configured() else SMS_CONSENT_WARNING
 
 
 def format_plan(plan_result: dict, config=None) -> str:

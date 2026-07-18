@@ -23,6 +23,7 @@ from ..config.models import ClientMeta
 from .alerts import AlertSink, default_alert_factory
 from .lead import AgentRegistry, parse_lead
 from .signature import DEFAULT_TOLERANCE_MS, check_signature
+from .sms import DEFAULT_LEDGER_PATH, SmsLedger, SmsSink, default_sms_sink, maybe_send_booking_sms
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,8 @@ def create_app(
     webhook_key: str | None = None,
     registry: AgentRegistry | None = None,
     alert_factory: AlertFactory | None = None,
+    sms_sink: SmsSink | None = None,
+    sms_ledger: SmsLedger | None = None,
     tolerance_ms: int = DEFAULT_TOLERANCE_MS,
 ) -> FastAPI:
     """Build the webhook app. Raises RuntimeError if no webhook key is available."""
@@ -47,6 +50,8 @@ def create_app(
 
     reg = registry if registry is not None else AgentRegistry.from_clients_dir()
     make_alert = alert_factory or default_alert_factory
+    sms = sms_sink if sms_sink is not None else default_sms_sink()
+    ledger = sms_ledger if sms_ledger is not None else SmsLedger(DEFAULT_LEDGER_PATH)
     logger.info("webhook service starting; %d managed agent(s) registered", len(reg))
 
     app = FastAPI(title="dma-deploy-kit post-call webhook")
@@ -92,6 +97,16 @@ def create_app(
         lead = parse_lead(payload, binding)
         make_alert(binding.config.client).send(lead)
         logger.info("processed lead for %s (call %s)", lead.business_name, lead.call_id)
+
+        # Best-effort booking SMS (fully consent-gated + send-once); never let an
+        # SMS problem fail the webhook acknowledgement.
+        try:
+            result = maybe_send_booking_sms(binding.config, lead, sms, ledger)
+            if result is not None:
+                logger.info("booking SMS %s for call %s", result.status, lead.call_id)
+        except Exception:
+            logger.exception("booking SMS failed for call %s", lead.call_id)
+
         return {"status": "processed", "slug": lead.slug, "call_id": lead.call_id}
 
     return app

@@ -39,3 +39,6 @@ capture/
 
 # Local webhook service logs
 postcall.log
+
+# Local runtime state (SMS ledger, etc.)
+var/

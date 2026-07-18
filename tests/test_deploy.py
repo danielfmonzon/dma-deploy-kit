@@ -82,6 +82,25 @@ def test_no_sms_consent_warning_when_false(tmp_path):
     assert "WARNING: booking.sms_consent" not in out
 
 
+def test_sms_warning_variant_without_twilio(acme, tmp_path, monkeypatch):
+    cli = _load_cli()
+    for k in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"):
+        monkeypatch.delenv(k, raising=False)
+    out = cli.format_plan(plan(acme, client=None, lockfile=tmp_path / "a.lock.json"), acme)
+    assert "no Twilio credentials are set" in out
+    assert "will NOT be sent" in out
+
+
+def test_sms_warning_variant_with_twilio(acme, tmp_path, monkeypatch):
+    cli = _load_cli()
+    monkeypatch.setenv("TWILIO_ACCOUNT_SID", "AC_x")
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "tok")
+    monkeypatch.setenv("TWILIO_FROM_NUMBER", "+15550000000")
+    out = cli.format_plan(plan(acme, client=None, lockfile=tmp_path / "a.lock.json"), acme)
+    assert "Twilio SMS is configured" in out
+    assert "will NOT be sent" not in out
+
+
 # --------------------------------------------------------------------------- #
 # desired state
 # --------------------------------------------------------------------------- #
