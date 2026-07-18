@@ -14,7 +14,9 @@ from dma_deploy_kit.postcall import (
     AgentBinding,
     AgentRegistry,
     DebugAlert,
+    DebugSms,
     EmailAlert,
+    SmsLedger,
     build_signature,
     check_signature,
     create_app,
@@ -39,6 +41,18 @@ def acme():
 def registry(acme):
     binding = AgentBinding(slug="acme-wellness", language="en-US", config=acme)
     return AgentRegistry({AGENT_ID: binding})
+
+
+def _app(registry, tmp_path, **kwargs):
+    """create_app with SMS injected to a temp ledger so tests never touch var/."""
+    kwargs.setdefault("alert_factory", lambda m: DebugAlert())
+    return create_app(
+        webhook_key=KEY,
+        registry=registry,
+        sms_sink=DebugSms(),
+        sms_ledger=SmsLedger(tmp_path / "sms.jsonl"),
+        **kwargs,
+    )
 
 
 def _call_analyzed_payload(agent_id: str = AGENT_ID) -> dict:
@@ -143,8 +157,8 @@ def test_create_app_fails_closed_without_key(monkeypatch):
 # --------------------------------------------------------------------------- #
 # webhook endpoint
 # --------------------------------------------------------------------------- #
-def test_webhook_rejects_bad_signature(registry):
-    app = create_app(webhook_key=KEY, registry=registry, alert_factory=lambda m: DebugAlert())
+def test_webhook_rejects_bad_signature(registry, tmp_path):
+    app = _app(registry, tmp_path)
     client = TestClient(app)
     raw = json.dumps(_call_analyzed_payload()).encode("utf-8")
     # wrong signature
@@ -155,9 +169,9 @@ def test_webhook_rejects_bad_signature(registry):
     assert resp2.status_code == 401
 
 
-def test_webhook_processes_call_analyzed(registry):
+def test_webhook_processes_call_analyzed(registry, tmp_path):
     debug = DebugAlert()
-    app = create_app(webhook_key=KEY, registry=registry, alert_factory=lambda m: debug)
+    app = _app(registry, tmp_path, alert_factory=lambda m: debug)
     client = TestClient(app)
     resp = _post(client, _call_analyzed_payload())
     assert resp.status_code == 200
@@ -177,9 +191,9 @@ def test_webhook_processes_call_analyzed(registry):
     assert lead.fields["is_returning_client"] is None  # configured but not captured
 
 
-def test_webhook_ignores_other_events(registry):
+def test_webhook_ignores_other_events(registry, tmp_path):
     debug = DebugAlert()
-    app = create_app(webhook_key=KEY, registry=registry, alert_factory=lambda m: debug)
+    app = _app(registry, tmp_path, alert_factory=lambda m: debug)
     client = TestClient(app)
     resp = _post(client, {"event": "call_started", "call": {"agent_id": AGENT_ID}})
     assert resp.status_code == 200
@@ -187,9 +201,9 @@ def test_webhook_ignores_other_events(registry):
     assert debug.sent == []
 
 
-def test_webhook_unmanaged_agent_acknowledged(registry):
+def test_webhook_unmanaged_agent_acknowledged(registry, tmp_path):
     debug = DebugAlert()
-    app = create_app(webhook_key=KEY, registry=registry, alert_factory=lambda m: debug)
+    app = _app(registry, tmp_path, alert_factory=lambda m: debug)
     client = TestClient(app)
     resp = _post(client, _call_analyzed_payload(agent_id="agent_not_ours"))
     assert resp.status_code == 200
