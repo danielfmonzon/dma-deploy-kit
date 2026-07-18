@@ -71,6 +71,46 @@ def test_post_call_source_default_and_example_markings():
     assert by_name["caller_name"].source == "caller"
 
 
+def test_duplicate_phone_role_rejected(tmp_path):
+    data = _minimal_config()
+    data["post_call"] = [
+        {"name": "caller_phone", "type": "string", "description": "p1", "role": "phone"},
+        {"name": "alt_phone", "type": "string", "description": "p2", "role": "phone"},
+    ]
+    p = _write(tmp_path, data)
+    with pytest.raises(ClientConfigError) as exc:
+        load_client_config(p)
+    msg = str(exc.value)
+    assert "post_call" in msg
+    assert "role 'phone'" in msg
+    assert "caller_phone" in msg and "alt_phone" in msg  # both offenders named
+
+
+def test_duplicate_consent_role_rejected(tmp_path):
+    data = _minimal_config()
+    data["post_call"] = [
+        {"name": "consent_a", "type": "boolean", "description": "c1", "role": "consent"},
+        {"name": "consent_b", "type": "boolean", "description": "c2", "role": "consent"},
+    ]
+    p = _write(tmp_path, data)
+    with pytest.raises(ClientConfigError) as exc:
+        load_client_config(p)
+    msg = str(exc.value)
+    assert "role 'consent'" in msg
+    assert "consent_a" in msg and "consent_b" in msg
+
+
+def test_one_of_each_role_is_allowed(tmp_path):
+    data = _minimal_config()
+    data["post_call"] = [
+        {"name": "caller_phone", "type": "string", "description": "p", "role": "phone"},
+        {"name": "consent_to_text", "type": "boolean", "description": "c", "role": "consent"},
+    ]
+    config = load_client_config(_write(tmp_path, data))
+    roles = {f.name: f.role for f in config.post_call}
+    assert roles == {"caller_phone": "phone", "consent_to_text": "consent"}
+
+
 def test_minimal_config_loads(tmp_path):
     p = _write(tmp_path, _minimal_config())
     config = load_client_config(p)

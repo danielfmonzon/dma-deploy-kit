@@ -140,6 +140,14 @@ agent:
 #             the fields listed in the prompt's CAPTURING DETAILS section.
 #   derived = extracted automatically from the transcript after the call, so the
 #             agent never asks about it and it is omitted from CAPTURING DETAILS.
+#
+# "role" marks a field's special use for the post-call SMS sender (at most one of
+# each per config):
+#   phone   = the number the booking SMS is sent to.
+#   consent = whether the caller agreed to receive that SMS.
+# If a role is omitted, the sender falls back to a heuristic: phone -> first field
+# whose name contains "phone"; consent -> the field named exactly "consent_to_text".
+# Declaring roles explicitly is preferred and makes resolution unambiguous.
 post_call:
   - name: caller_name
     type: string
@@ -147,6 +155,7 @@ post_call:
   - name: caller_phone
     type: string
     description: Best callback number, digits only where possible.
+    role: phone             # the booking SMS is sent to this number
   - name: caller_email
     type: string
     description: Caller's email address, if provided.
@@ -164,6 +173,7 @@ post_call:
     type: boolean
     description: Whether the caller agreed to receive an SMS with the booking link.
     source: caller          # explicit here to show the default (caller)
+    role: consent           # gates whether the booking SMS is sent
   - name: is_returning_client
     type: boolean
     description: Whether the caller indicated they are an existing client.

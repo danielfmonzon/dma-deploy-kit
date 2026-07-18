@@ -3,6 +3,17 @@
 Follows the alerts.py sink pattern. Sends are gated on explicit consent and a
 send-once JSONL ledger so a Retell webhook retry never double-texts a caller.
 
+Field resolution order (which post_call field holds the phone / consent value):
+  * Phone:   the post_call field whose ``role == "phone"`` if one exists; else
+             fall back to the first field whose name contains "phone" (a heuristic
+             — logs an INFO line naming the field it chose).
+  * Consent: the post_call field whose ``role == "consent"`` if one exists; else
+             fall back to the field named exactly ``consent_to_text`` (also logs
+             an INFO line on fallback).
+Roles are declared in the client config (models.PostCallField.role) and validated
+to be unique, so a role match is always unambiguous. Prefer roles; the heuristics
+exist only for older, role-less configs (e.g. the captured DMA schema).
+
 Twilio Messages API (verified against
 https://www.twilio.com/docs/messaging/api/message-resource):
   POST https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Messages.json
@@ -210,10 +221,35 @@ def _is_truthy(value: object) -> bool:
 
 
 def phone_field_name(config: ClientConfig) -> str | None:
-    """Convention: the caller's phone is the FIRST post_call field whose name
-    contains "phone" (e.g. "caller_phone"). Documented and flagged for review."""
+    """Resolve the caller-phone field: role=="phone" first, else name heuristic.
+
+    See the module docstring for the full resolution order.
+    """
+    for field in config.post_call:
+        if field.role == "phone":
+            return field.name
     for field in config.post_call:
         if "phone" in field.name.lower():
+            logger.info(
+                "phone field: no role=='phone' declared; heuristic chose '%s'", field.name
+            )
+            return field.name
+    return None
+
+
+def consent_field_name(config: ClientConfig) -> str | None:
+    """Resolve the SMS-consent field: role=="consent" first, else exact name.
+
+    See the module docstring for the full resolution order.
+    """
+    for field in config.post_call:
+        if field.role == "consent":
+            return field.name
+    for field in config.post_call:
+        if field.name == "consent_to_text":
+            logger.info(
+                "consent field: no role=='consent' declared; fell back to 'consent_to_text'"
+            )
             return field.name
     return None
 
@@ -225,12 +261,13 @@ def prepare_booking_sms(config: ClientConfig, lead: Lead) -> tuple[str, str] | N
         return None
     if not booking.url:
         return None
-    if not _is_truthy(lead.fields.get("consent_to_text")):
+    consent_field = consent_field_name(config)
+    if consent_field is None or not _is_truthy(lead.fields.get(consent_field)):
         return None
-    field = phone_field_name(config)
-    if field is None:
+    phone_field = phone_field_name(config)
+    if phone_field is None:
         return None
-    to_e164 = normalize_us_phone(lead.fields.get(field))
+    to_e164 = normalize_us_phone(lead.fields.get(phone_field))
     if to_e164 is None:
         return None
     return to_e164, booking_sms_body(config.client.business_name, booking.url)

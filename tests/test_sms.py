@@ -23,6 +23,7 @@ from dma_deploy_kit.postcall import (
     TwilioSms,
     booking_sms_body,
     build_signature,
+    consent_field_name,
     create_app,
     maybe_send_booking_sms,
     normalize_us_phone,
@@ -91,11 +92,64 @@ def test_booking_sms_body_under_160_for_acme(acme):
 
 
 # --------------------------------------------------------------------------- #
-# phone-field convention
+# phone / consent field resolution (role first, heuristic fallback)
 # --------------------------------------------------------------------------- #
+def _cfg(tmp_path, post_call, booking=None):
+    import yaml
+    data = {
+        "client": {"slug": "rt", "business_name": "RT", "vertical": "salon",
+                   "timezone": "America/New_York"},
+        "languages": [{"code": "en-US", "voice_id": "retell-Tamsin", "greeting": "Hi."}],
+        "facts": {"description": "x"},
+        "booking": booking or {"url": "https://rt.example.com/book", "sms_consent": True},
+        "escalation": {"contact_name": "Sam"},
+        "post_call": post_call,
+    }
+    p = tmp_path / "c.yaml"
+    p.write_text(yaml.safe_dump(data), encoding="utf-8")
+    return load_client_config(p)
+
+
 def test_phone_field_convention(acme):
-    # first post_call field whose name contains "phone"
+    # acme now marks caller_phone with role: phone
     assert phone_field_name(acme) == "caller_phone"
+    assert consent_field_name(acme) == "consent_to_text"
+
+
+def test_role_phone_wins_over_earlier_heuristic_decoy(tmp_path):
+    # "phone_type_preference" sorts earlier and matches the name heuristic, but the
+    # role marker on caller_phone must win.
+    cfg = _cfg(tmp_path, [
+        {"name": "phone_type_preference", "type": "string", "description": "decoy"},
+        {"name": "caller_phone", "type": "string", "description": "real", "role": "phone"},
+        {"name": "consent_to_text", "type": "boolean", "description": "c", "role": "consent"},
+    ])
+    assert phone_field_name(cfg) == "caller_phone"
+
+
+def test_role_consent_wins_over_name_decoy(tmp_path):
+    # A field literally named consent_to_text (no role) is a decoy; the role marker
+    # on agreed_to_sms must win.
+    cfg = _cfg(tmp_path, [
+        {"name": "consent_to_text", "type": "boolean", "description": "decoy"},
+        {"name": "agreed_to_sms", "type": "boolean", "description": "real", "role": "consent"},
+        {"name": "caller_phone", "type": "string", "description": "p", "role": "phone"},
+    ])
+    assert consent_field_name(cfg) == "agreed_to_sms"
+
+
+def test_roleless_fallback_and_log(tmp_path, caplog):
+    import logging
+    cfg = _cfg(tmp_path, [  # DMA-shaped: no roles at all
+        {"name": "caller_phone", "type": "string", "description": "p"},
+        {"name": "consent_to_text", "type": "boolean", "description": "c"},
+    ])
+    with caplog.at_level(logging.INFO, logger="dma_deploy_kit.postcall.sms"):
+        assert phone_field_name(cfg) == "caller_phone"
+        assert consent_field_name(cfg) == "consent_to_text"
+    msgs = " ".join(r.message for r in caplog.records)
+    assert "heuristic chose 'caller_phone'" in msgs
+    assert "fell back to 'consent_to_text'" in msgs
 
 
 # --------------------------------------------------------------------------- #

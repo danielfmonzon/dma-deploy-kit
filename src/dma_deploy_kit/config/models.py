@@ -190,6 +190,9 @@ class PostCallField(_Base):
     # "caller": the agent actively gathers/confirms this on the call.
     # "derived": extracted automatically from the transcript after the call.
     source: Literal["caller", "derived"] = "caller"
+    # Explicit role marker so the post-call service resolves the caller's phone
+    # and SMS-consent fields deterministically instead of by name heuristics.
+    role: Literal["phone", "consent"] | None = None
 
     @field_validator("name")
     @classmethod
@@ -242,4 +245,16 @@ class ClientConfig(_Base):
         dupes = sorted({c for c in codes if codes.count(c) > 1})
         if dupes:
             raise ValueError(f"languages: duplicate language codes not allowed: {dupes}")
+        return v
+
+    @field_validator("post_call")
+    @classmethod
+    def _unique_roles(cls, v: list[PostCallField]) -> list[PostCallField]:
+        for role in ("phone", "consent"):
+            named = [f.name for f in v if f.role == role]
+            if len(named) > 1:
+                raise ValueError(
+                    f"post_call: at most one field may have role '{role}', but these "
+                    f"do: {named}"
+                )
         return v
