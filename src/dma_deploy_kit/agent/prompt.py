@@ -180,9 +180,16 @@ def _capturing_details(config: ClientConfig) -> str:
         "Before the call ends, make sure you have captured the following for the "
         "team's records. Gather them conversationally, never as a rigid form:"
     )
-    rows = [f"- {field.name}: {field.description}" for field in config.post_call]
+    caller_fields = [f for f in config.post_call if f.source == "caller"]
+    rows = [f"- {field.name}: {field.description}" for field in caller_fields]
     outro = "Read back the caller's name, number, and email to confirm accuracy."
-    return f"{intro}\n{chr(10).join(rows)}\n{outro}"
+    lines = [intro, "\n".join(rows), outro]
+    if any(f.source == "derived" for f in config.post_call):
+        lines.append(
+            "Additional summary fields are derived automatically from the call "
+            "afterward — you do not need to ask about them."
+        )
+    return "\n".join(lines)
 
 
 def _escalation(config: ClientConfig) -> str:

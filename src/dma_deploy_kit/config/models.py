@@ -182,6 +182,9 @@ class PostCallField(_Base):
     type: Literal["string", "boolean", "enum", "number"]
     description: str
     choices: list[str] | None = None  # required iff type == "enum"
+    # "caller": the agent actively gathers/confirms this on the call.
+    # "derived": extracted automatically from the transcript after the call.
+    source: Literal["caller", "derived"] = "caller"
 
     @field_validator("name")
     @classmethod

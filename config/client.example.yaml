@@ -116,6 +116,12 @@ agent:
 # --- post-call analysis schema (lead-capture flow) ---------------------------
 # Structured fields Retell extracts after each call. At least one field required.
 # Types: string | boolean | enum | number. "enum" requires "choices".
+#
+# "source" marks who supplies each field (default: caller):
+#   caller  = the agent actively gathers/confirms it during the call; these are
+#             the fields listed in the prompt's CAPTURING DETAILS section.
+#   derived = extracted automatically from the transcript after the call, so the
+#             agent never asks about it and it is omitted from CAPTURING DETAILS.
 post_call:
   - name: caller_name
     type: string
@@ -139,9 +145,11 @@ post_call:
   - name: consent_to_text
     type: boolean
     description: Whether the caller agreed to receive an SMS with the booking link.
+    source: caller          # explicit here to show the default (caller)
   - name: is_returning_client
     type: boolean
     description: Whether the caller indicated they are an existing client.
   - name: call_summary
     type: string
     description: One- to two-sentence summary of the call outcome and next step.
+    source: derived         # summarized from the transcript; the agent never asks

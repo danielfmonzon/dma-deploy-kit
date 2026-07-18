@@ -155,10 +155,27 @@ def test_no_placeholder_artifacts(acme):
         assert "}" not in prompt
 
 
-def test_post_call_field_names_in_capturing_details(acme):
+def test_post_call_caller_fields_in_capturing_details(acme):
     cap = parse_sections(compile_prompt(acme, acme.languages[0]))["CAPTURING DETAILS"]
-    for field in acme.post_call:
+    caller = [f for f in acme.post_call if f.source == "caller"]
+    derived = [f for f in acme.post_call if f.source == "derived"]
+    assert caller  # sanity: example has caller fields
+    for field in caller:
         assert field.name in cap
+    # derived fields are NOT enumerated in CAPTURING DETAILS
+    assert derived  # sanity: example marks call_summary as derived
+    for field in derived:
+        assert field.name not in cap
+    # and there is one closing note that derived fields exist
+    assert "derived automatically" in cap.lower()
+
+
+def test_no_derived_note_when_all_caller(tmp_path):
+    data = _minimal_config_dict()  # single caller field, no derived
+    config = _load_from_dict(tmp_path, data)
+    cap = parse_sections(compile_prompt(config, config.languages[0]))["CAPTURING DETAILS"]
+    assert "caller_name" in cap
+    assert "derived automatically" not in cap.lower()
 
 
 def test_escalation_contact_appears(acme):

@@ -61,6 +61,16 @@ def test_example_yaml_loads_and_validates():
     assert enums[0].choices
 
 
+def test_post_call_source_default_and_example_markings():
+    config = load_client_config(EXAMPLE_PATH)
+    by_name = {f.name: f for f in config.post_call}
+    # explicit markings in the example
+    assert by_name["call_summary"].source == "derived"
+    assert by_name["consent_to_text"].source == "caller"
+    # default is "caller" when unspecified
+    assert by_name["caller_name"].source == "caller"
+
+
 def test_minimal_config_loads(tmp_path):
     p = _write(tmp_path, _minimal_config())
     config = load_client_config(p)
