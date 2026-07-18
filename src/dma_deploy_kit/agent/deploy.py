@@ -13,6 +13,17 @@ Retell endpoints (verified against docs.retellai.com):
   PATCH /update-retell-llm/{llm_id}
   GET   /get-retell-llm/{llm_id}
 All authenticate with "Authorization: Bearer <RETELL_API_KEY>".
+
+KNOWN LIMITATION — the differ only sees fields that build_desired_state EMITS.
+Any field the engine conditionally omits (e.g. webhook_url when WEBHOOK_BASE_URL
+is unset, or ambient_sound when None) is invisible to ``_diff``: the plan cannot
+detect drift on it and cannot explicitly unset it live. Clearing such a field
+today requires a direct out-of-band API PATCH (e.g. webhook_url -> null).
+
+ROADMAP (not built yet):
+  - Field ownership / explicit-unset support: let desired state express "this
+    field must be null/absent" so the differ can detect and reconcile drift on
+    omitted fields instead of silently ignoring them.
 """
 
 from __future__ import annotations

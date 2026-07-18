@@ -51,6 +51,37 @@ def _single_lang_config(tmp_path: Path):
     return load_client_config(p)
 
 
+def _load_cli():
+    import sys
+    scripts_dir = str(REPO_ROOT / "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    import deploy_client  # noqa: PLC0415
+
+    return deploy_client
+
+
+# --------------------------------------------------------------------------- #
+# sms_consent warning (CLI)
+# --------------------------------------------------------------------------- #
+def test_sms_consent_warning_appears_for_acme(acme, tmp_path):
+    cli = _load_cli()
+    assert acme.booking.sms_consent is True
+    result = plan(acme, client=None, lockfile=tmp_path / "acme.lock.json")
+    out = cli.format_plan(result, acme)
+    assert "sms_consent is TRUE" in out
+    assert "will NOT be sent" in out
+
+
+def test_no_sms_consent_warning_when_false(tmp_path):
+    cli = _load_cli()
+    solo = _single_lang_config(tmp_path)  # no booking block -> sms_consent False
+    assert solo.booking.sms_consent is False
+    result = plan(solo, client=None, lockfile=tmp_path / "solo.lock.json")
+    out = cli.format_plan(result, solo)
+    assert "WARNING: booking.sms_consent" not in out
+
+
 # --------------------------------------------------------------------------- #
 # desired state
 # --------------------------------------------------------------------------- #

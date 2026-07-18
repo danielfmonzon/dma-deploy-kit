@@ -87,7 +87,19 @@ def parse_lead(payload: dict, binding: AgentBinding) -> Lead:
     custom = analysis.get("custom_analysis_data") or {}
 
     # Only surface the fields this client actually configured (in schema order).
-    fields: dict[str, object] = {f.name: custom.get(f.name) for f in binding.config.post_call}
+    # For a derived field literally named "call_summary" that Retell didn't populate
+    # in custom_analysis_data, fall back to the preset call_analysis.call_summary.
+    # We do NOT guess preset mappings for any other derived field.
+    fields: dict[str, object] = {}
+    for field in binding.config.post_call:
+        value = custom.get(field.name)
+        if (
+            field.source == "derived"
+            and field.name == "call_summary"
+            and value in (None, "")
+        ):
+            value = analysis.get("call_summary")
+        fields[field.name] = value
 
     start = call.get("start_timestamp")
     end = call.get("end_timestamp")

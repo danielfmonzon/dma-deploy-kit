@@ -245,6 +245,73 @@ def test_parse_lead_fields_and_metadata(acme):
     assert lead.disconnection_reason == "user_hangup"
 
 
+def test_call_summary_falls_back_to_preset(acme):
+    # Mirrors the real webhook: custom_analysis_data has no call_summary, but the
+    # preset call_analysis.call_summary is populated. call_summary is source=derived.
+    binding = AgentBinding(slug="acme-wellness", language="en-US", config=acme)
+    payload = {
+        "event": "call_analyzed",
+        "call": {
+            "call_id": "call_real",
+            "agent_id": AGENT_ID,
+            "call_analysis": {
+                "call_summary": "Robert asked about a complimentary consultation.",
+                "custom_analysis_data": {"caller_name": "Robert"},  # no call_summary here
+            },
+        },
+    }
+    lead = parse_lead(payload, binding)
+    assert lead.fields["call_summary"] == "Robert asked about a complimentary consultation."
+    assert lead.fields["caller_name"] == "Robert"
+
+
+def test_call_summary_prefers_custom_over_preset(acme):
+    binding = AgentBinding(slug="acme-wellness", language="en-US", config=acme)
+    payload = {
+        "event": "call_analyzed",
+        "call": {
+            "call_id": "call_x",
+            "agent_id": AGENT_ID,
+            "call_analysis": {
+                "call_summary": "preset summary",
+                "custom_analysis_data": {"call_summary": "custom summary"},
+            },
+        },
+    }
+    lead = parse_lead(payload, binding)
+    assert lead.fields["call_summary"] == "custom summary"
+
+
+def test_other_derived_fields_not_filled_from_preset(tmp_path):
+    # A derived field NOT named call_summary must stay unfilled (no guessed mapping).
+    data = {
+        "client": {
+            "slug": "solo", "business_name": "Solo Co", "vertical": "salon",
+            "timezone": "America/New_York",
+        },
+        "languages": [{"code": "en-US", "voice_id": "retell-Tamsin", "greeting": "Hi."}],
+        "facts": {"description": "x"},
+        "escalation": {"contact_name": "Sam"},
+        "post_call": [
+            {"name": "outcome", "type": "string", "description": "Outcome.", "source": "derived"},
+        ],
+    }
+    p = tmp_path / "c.yaml"
+    import yaml
+    p.write_text(yaml.safe_dump(data), encoding="utf-8")
+    config = load_client_config(p)
+    binding = AgentBinding(slug="solo", language="en-US", config=config)
+    payload = {
+        "call": {
+            "call_id": "c", "agent_id": "a",
+            "call_analysis": {"call_summary": "should NOT leak into outcome",
+                              "custom_analysis_data": {}},
+        }
+    }
+    lead = parse_lead(payload, binding)
+    assert lead.fields["outcome"] is None
+
+
 # --------------------------------------------------------------------------- #
 # alerts
 # --------------------------------------------------------------------------- #

@@ -65,7 +65,20 @@ def _fmt_diff(label: str, diff: dict) -> list[str]:
     return lines
 
 
-def format_plan(plan_result: dict) -> str:
+SMS_CONSENT_WARNING = (
+    "!!  WARNING: booking.sms_consent is TRUE, but no SMS backend exists yet.\n"
+    "!!  The agent will offer/promise to text callers (e.g. the booking link), but\n"
+    "!!  those texts will NOT be sent — there is no SMS sender wired up.\n"
+    "!!  Real clients should set sms_consent: false until the SMS sender ships."
+)
+
+
+def sms_consent_warning(config) -> str | None:
+    """Return the SMS-consent warning banner when the config enables sms_consent."""
+    return SMS_CONSENT_WARNING if config.booking.sms_consent else None
+
+
+def format_plan(plan_result: dict, config=None) -> str:
     lines = [f"Deployment plan for client '{plan_result['slug']}':", ""]
     for item in plan_result["items"]:
         lines.append(f"[{item['action']}] {item['agent_name']}  ({item['code']})")
@@ -82,6 +95,9 @@ def format_plan(plan_result: dict) -> str:
     actions = [i["action"] for i in plan_result["items"]]
     counts = [f"{actions.count(a)} {a}" for a in ("CREATE", "UPDATE", "NOOP") if a in actions]
     lines.append(f"Summary: {', '.join(counts) or 'nothing to do'}")
+    warning = sms_consent_warning(config) if config is not None else None
+    if warning:
+        lines += ["", warning]
     return "\n".join(lines)
 
 
@@ -112,12 +128,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Planning failed: {exc}", file=sys.stderr)
         return 1
 
-    print(format_plan(plan_result))
+    print(format_plan(plan_result, config))
 
     if args.apply:
         if client is None:
             print("Cannot --apply without a Retell client (set RETELL_API_KEY).", file=sys.stderr)
             return 1
+        warning = sms_consent_warning(config)
+        if warning:
+            print("\n" + warning)
         print("\nApplying...")
         lock = apply(config, plan_result, client)
         print(f"Applied. Lockfile now tracks: {sorted(lock)}")
