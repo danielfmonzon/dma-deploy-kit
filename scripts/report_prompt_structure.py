@@ -116,33 +116,51 @@ def classify_similarity(a: str, b: str) -> str:
     return "DIFFERENT"
 
 
+def _business_token(agent_name: str) -> str:
+    """The leading alphanumeric token of an agent_name, used as its short label."""
+    m = re.match(r"\s*([A-Za-z0-9]+)", agent_name)
+    return m.group(1) if m else agent_name
+
+
+def _agent_language(agent: dict, begin_message: str) -> str:
+    """'ES' if the agent is Spanish, else 'EN' — derived from the captured data."""
+    name = agent.get("agent_name", "") or ""
+    if re.search(r"espa", name, re.IGNORECASE):
+        return "ES"
+    langs = detect_langs(begin_message).split(",")
+    return "ES" if ("es" in langs and "en" not in langs) else "EN"
+
+
 def load_agents() -> list[dict]:
-    order = {"en": 0, "es": 1}
+    """Load captured agents; labels are DERIVED from agent_name in the JSON at
+    runtime (business token + language), never hardcoded — so no client/agent
+    name lives in this source file. A language suffix is added only when a
+    business has more than one agent (to disambiguate a bilingual pair)."""
     agents = []
     for path in sorted(glob.glob(str(CAPTURE_DIR / "agent_*.json"))):
         data = json.load(open(path, encoding="utf-8"))
         agent = data.get("agent") or {}
         detail = data.get("response_engine_detail") or {}
         name = agent.get("agent_name") or Path(path).stem
-        if "Espa" in name:
-            label, sort = "DMA-ES", 1
-        elif "DMA" in name:
-            label, sort = "DMA-EN", 0
-        else:
-            label, sort = "REDACTED-NAME", 2
+        begin = detail.get("begin_message", "") or ""
         prompt = detail.get("general_prompt", "") or ""
         agents.append(
             {
-                "label": label,
-                "sort": sort,
                 "name": name,
+                "business": _business_token(name),
+                "lang": _agent_language(agent, begin),
                 "prompt": prompt,
-                "begin_message": detail.get("begin_message", "") or "",
+                "begin_message": begin,
                 "sections": parse_sections(prompt),
             }
         )
-    _ = order
-    agents.sort(key=lambda a: a["sort"])
+    counts: dict[str, int] = {}
+    for a in agents:
+        counts[a["business"]] = counts.get(a["business"], 0) + 1
+    for a in agents:
+        a["label"] = f"{a['business']}-{a['lang']}" if counts[a["business"]] > 1 else a["business"]
+    lang_order = {"EN": 0, "ES": 1}
+    agents.sort(key=lambda a: (a["business"], lang_order.get(a["lang"], 9)))
     return agents
 
 
@@ -150,6 +168,15 @@ def build_report(agents: list[dict]) -> str:
     lines: list[str] = []
     w = lines.append
     labels = [a["label"] for a in agents]
+
+    # Derive (never hardcode) the bilingual "family" business and the single-agent
+    # businesses from the loaded data, for the report narrative.
+    by_business: dict[str, list[dict]] = {}
+    for a in agents:
+        by_business.setdefault(a["business"], []).append(a)
+    family = next((b for b, ags in by_business.items() if len(ags) > 1), None)
+    singles = [a["business"] for a in agents if len(by_business[a["business"]]) == 1]
+    single = singles[0] if singles else "(none)"
 
     w("# Prompt structure analysis")
     w("")
@@ -195,10 +222,10 @@ def build_report(agents: list[dict]) -> str:
     w(f"- In **some** (2 of 3): **{len(in_some)}**")
     w(f"- In **one** only: **{len(in_one)}**")
     w("")
-    w("Heading conventions differ by family: the DMA prompts use `#` ALL-CAPS "
-      "headings (shared taxonomy); REDACTED-NAME uses `##` Title-Case headings (its "
-      "own taxonomy). Section-name matching therefore aligns DMA-EN/ES to each "
-      "other, not to REDACTED-NAME.")
+    w(f"Heading conventions differ by family: the {family} prompts use `#` ALL-CAPS "
+      f"headings (shared taxonomy); {single} uses `##` Title-Case headings (its "
+      f"own taxonomy). Section-name matching therefore aligns {family}-EN/ES to each "
+      f"other, not to {single}.")
     w("")
 
     w("### Presence matrix")
@@ -256,11 +283,11 @@ def build_report(agents: list[dict]) -> str:
           f"{totals['propernoun']} |")
         w("")
 
-    # ---------- (d) DMA EN vs ES ----------
-    w("## (d) DMA English vs Español")
+    # ---------- (d) bilingual family EN vs ES ----------
+    w(f"## (d) {family} English vs Español")
     w("")
-    en = next((a for a in agents if a["label"] == "DMA-EN"), None)
-    es = next((a for a in agents if a["label"] == "DMA-ES"), None)
+    en = next((a for a in agents if a["business"] == family and a["lang"] == "EN"), None)
+    es = next((a for a in agents if a["business"] == family and a["lang"] == "ES"), None)
     if en and es:
         overall = similarity(en["prompt"], es["prompt"])
         w(f"- Overall prompt similarity (char-level): **{overall:.1%}**")
@@ -290,7 +317,7 @@ def build_report(agents: list[dict]) -> str:
               f"{delta:+.0%} | {flag} | {cls} |")
         w("")
     else:
-        w("_DMA EN/ES pair not both present._")
+        w(f"_{family} EN/ES pair not both present._")
         w("")
 
     # ---------- (e) Engine-template candidates ----------
@@ -308,8 +335,8 @@ def build_report(agents: list[dict]) -> str:
             w(f"- {n}")
     else:
         w("_No section is verbatim-identical across all three prompts._ "
-          "(Expected: the DMA family and REDACTED-NAME use different taxonomies and "
-          "wording, and DMA-ES bodies are translated.)")
+          f"(Expected: the {family} family and {single} use different taxonomies and "
+          f"wording, and {family}-ES bodies are translated.)")
     w("")
     # Bonus: identical body blocks across all three regardless of heading name.
     def body_hashes(a: dict) -> set[str]:
@@ -335,7 +362,7 @@ def build_report(agents: list[dict]) -> str:
           f"{c['email']} | {c['url']} | {c['price']} | {c['time_hours']} |")
     w("")
     if en and es:
-        w(f"- DMA EN vs ES begin_message similarity: "
+        w(f"- {family} EN vs ES begin_message similarity: "
           f"**{similarity(en['begin_message'], es['begin_message']):.1%}** "
           f"({classify_similarity(en['begin_message'], es['begin_message'])}).")
         w("")

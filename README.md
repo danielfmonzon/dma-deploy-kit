@@ -126,7 +126,7 @@ See [docs/deployment.md](docs/deployment.md) for the full new-client walkthrough
 
 ## Example workflow
 
-Standing up a brand-new client, from clone to two live agents, takes **well under a minute of wall-clock time — 26 seconds measured** on a fresh clone (see *methodology* below).
+The **tooling** path from clone to two live agents is **26 seconds, measured** (fresh clone → `--apply` complete). That is the point: the real cost of a new client isn't engineering — it's gathering the business facts that fill the config (hours, services, guardrails, voices, escalation). Once you have those, standing up the agents is essentially free, so the **engineering cost per additional client approaches zero**. The number below is the tooling floor, not the onboarding total.
 
 ```bash
 # 1. clone + install (once per machine)
