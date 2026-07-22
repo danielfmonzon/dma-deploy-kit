@@ -5,10 +5,14 @@ config/clients/acme-wellness.lock.json. The list request is filtered to those
 agents, and every returned call's agent_id is re-checked against that allow-list
 — any other agent_id is refused (never fetched or saved).
 
-Retell endpoints (verified against docs.retellai.com):
+Retell endpoints (verified against docs.retellai.com; neither is on the June 2026
+legacy-list deprecation list — /v3/list-calls is the current replacement for the
+deprecated /v2/list-calls, and /v2/get-call is a single-resource GET):
   POST /v3/list-calls   body {"filter_criteria": {"agent": [{"agent_id": ...}]}}
   GET  /v2/get-call/{call_id}
-Both use Bearer auth with RETELL_API_KEY.
+Both use Bearer auth with RETELL_API_KEY. The v3 list endpoint returns the
+documented paginated envelope {"items", "pagination_key", "has_more"}; we page
+through it with pagination_key while has_more is true.
 """
 
 from __future__ import annotations
@@ -35,9 +39,38 @@ def allowed_agent_ids() -> set[str]:
     return ids
 
 
+def list_all_calls(client: httpx.Client, allow: set[str], page_size: int) -> list[dict]:
+    """POST /v3/list-calls, filtered to the allowed agents, following pagination.
+
+    Reads the documented envelope {"items", "pagination_key", "has_more"} and
+    pages with pagination_key until has_more is false (tolerating a bare-array
+    body defensively). Returns all call summaries across pages.
+    """
+    items: list[dict] = []
+    pagination_key: str | None = None
+    while True:
+        body: dict = {
+            "filter_criteria": {"agent": [{"agent_id": aid} for aid in sorted(allow)]},
+            "limit": page_size,
+        }
+        if pagination_key:
+            body["pagination_key"] = pagination_key
+        resp = client.post("/v3/list-calls", json=body)
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, list):  # defensive: legacy bare array
+            items.extend(data)
+            break
+        items.extend(data.get("items") or data.get("calls") or data.get("data") or [])
+        pagination_key = data.get("pagination_key")
+        if not (data.get("has_more") and pagination_key):
+            break
+    return items
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Fetch Acme calls for eval (lockfile-restricted).")
-    parser.add_argument("--limit", type=int, default=50, help="max calls to list")
+    parser.add_argument("--limit", type=int, default=50, help="page size for list-calls")
     args = parser.parse_args()
 
     load_dotenv(REPO_ROOT / ".env")
@@ -52,18 +85,7 @@ def main() -> int:
 
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     with httpx.Client(base_url=BASE_URL, headers=headers, timeout=30.0) as client:
-        body = {
-            "filter_criteria": {"agent": [{"agent_id": aid} for aid in sorted(allow)]},
-            "limit": args.limit,
-        }
-        resp = client.post("/v3/list-calls", json=body)
-        resp.raise_for_status()
-        data = resp.json()
-        # v3 returns {"items": [...], "has_more": bool}; tolerate a bare list too.
-        if isinstance(data, list):
-            calls = data
-        else:
-            calls = data.get("items") or data.get("calls") or data.get("data") or []
+        calls = list_all_calls(client, allow, args.limit)
         print(f"list-calls returned {len(calls)} call(s)")
 
         OUT_DIR.mkdir(parents=True, exist_ok=True)

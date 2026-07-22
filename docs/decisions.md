@@ -16,6 +16,7 @@ of them. One line of rationale each; the code is the full story.
 | DTMF: prompt follows config | 2026-07-18 | Production keeps `allow_user_dtmf = True`; rather than fight it, the SPEAKING RULES text tells the agent keyed digits may arrive as input and to read them back — config and prompt agree. |
 | Sanitized-public / private-config split | 2026-07-18 | The tracked `client.example.yaml` is obviously fictional; real client configs, lockfiles, capture dumps, and the SMS ledger are all gitignored so nothing private is ever committed. |
 | Static evals gate CI; transcript evals run out-of-band | 2026-07-19 | Layer 1 needs no network and runs on every push; Layer 2 needs real transcripts, so it stays a local/manual tool until sanitized fixtures exist. |
+| Retell list endpoints: verified none deprecated; hardened to the paginated contract | 2026-07-22 | The June 2026 legacy-list deprecation notice covers `/v2/list-calls` (→ `/v3/list-calls`) and several unversioned GET list endpoints, but **not** `list-agents`. We already use `/v2/list-agents` (current) and `/v3/list-calls` (the replacement), so no endpoint change was needed. Both list callers now page the documented `{items, pagination_key, has_more}` envelope instead of reading a single page. |
 
 ## Roadmap (deferred, not built)
 

@@ -7,11 +7,14 @@ writes the raw dumps under capture/retell/ for later inspection.
 The capture/ directory is gitignored — these dumps are private client data.
 
 Verified against Retell's API docs (https://docs.retellai.com/api-references):
-  - POST https://api.retellai.com/v2/list-agents
+  - POST https://api.retellai.com/v2/list-agents   (current; NOT on the June 2026
+        legacy-list deprecation notice — it already returns the paginated envelope)
   - GET  https://api.retellai.com/get-agent/{agent_id}
   - GET  https://api.retellai.com/get-retell-llm/{llm_id}
   - GET  https://api.retellai.com/get-conversation-flow/{conversation_flow_id}
 All endpoints authenticate with an "Authorization: Bearer <RETELL_API_KEY>" header.
+The list endpoint returns {"items", "pagination_key", "has_more"}; we page through
+it with pagination_key while has_more is true.
 """
 
 from __future__ import annotations
@@ -68,6 +71,31 @@ def _raise_for_status(resp: httpx.Response) -> None:
         )
 
 
+def list_all_agents(client: httpx.Client) -> list[dict]:
+    """POST /v2/list-agents, following the documented paginated envelope.
+
+    Reads {"items", "pagination_key", "has_more"} and pages with pagination_key
+    until has_more is false (tolerating a bare-array or alternate wrapper key
+    defensively). Returns every agent summary across all pages.
+    """
+    items: list[dict] = []
+    pagination_key: str | None = None
+    while True:
+        payload: dict = {}
+        if pagination_key:
+            payload["pagination_key"] = pagination_key
+        resp = api_post(client, "/v2/list-agents", payload)
+        if isinstance(resp, list):  # defensive: legacy bare array
+            items.extend(resp)
+            break
+        page = resp.get("items") or resp.get("agents") or resp.get("data") or []
+        items.extend(page)
+        pagination_key = resp.get("pagination_key")
+        if not (resp.get("has_more") and pagination_key):
+            break
+    return items
+
+
 def fetch_response_engine(client: httpx.Client, response_engine: dict | None) -> dict | None:
     """Fetch the LLM / conversation-flow object referenced by an agent's response_engine."""
     if not response_engine:
@@ -91,23 +119,11 @@ def main() -> None:
 
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     with httpx.Client(headers=headers, timeout=30.0) as client:
-        agents_index = api_post(client, "/v2/list-agents", {})
-
-        # The v2 list endpoint returns a paginated object shaped like
-        # {"items": [...], "has_more": bool}. Handle a bare array or other
-        # wrapper keys defensively in case the shape differs.
-        if isinstance(agents_index, dict):
-            agent_items = (
-                agents_index.get("items")
-                or agents_index.get("agents")
-                or agents_index.get("data")
-                or []
-            )
-        else:
-            agent_items = agents_index
+        agent_items = list_all_agents(client)
 
         (OUT_DIR / "_agents_index.json").write_text(
-            json.dumps(agents_index, indent=2, ensure_ascii=False), encoding="utf-8"
+            json.dumps({"items": agent_items}, indent=2, ensure_ascii=False),
+            encoding="utf-8",
         )
 
         if not agent_items:
