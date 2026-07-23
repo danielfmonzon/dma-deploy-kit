@@ -211,7 +211,12 @@ def default_sms_sink() -> SmsSink:
 # --------------------------------------------------------------------------- #
 # orchestration: consent gating + send-once
 # --------------------------------------------------------------------------- #
-def _is_truthy(value: object) -> bool:
+def is_truthy(value: object) -> bool:
+    """Interpret a post_call analysis value as a yes/no.
+
+    Shared with the Layer 2 transcript checks so consent is judged identically
+    whether it gates a real send or a transcript finding.
+    """
     if isinstance(value, bool):
         return value
     if value is None:
@@ -265,7 +270,7 @@ def prepare_booking_sms(config: ClientConfig, lead: Lead) -> tuple[str, str] | N
     if not booking.url:
         return None
     consent_field = consent_field_name(config)
-    if consent_field is None or not _is_truthy(lead.fields.get(consent_field)):
+    if consent_field is None or not is_truthy(lead.fields.get(consent_field)):
         return None
     phone_field = phone_field_name(config)
     if phone_field is None:

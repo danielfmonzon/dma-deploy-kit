@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from static_checks import detect_languages
 
 from dma_deploy_kit.config import ClientConfig
-from dma_deploy_kit.postcall import consent_field_name
+from dma_deploy_kit.postcall import consent_field_name, is_truthy
 
 # --- human-claim patterns (word-boundary regex family) ----------------------
 # Matches an agent asserting it is a human / real person / not an AI. Kept narrow
@@ -64,18 +64,6 @@ def _agent_turns(turns: list[dict]):
             yield i, (turn.get("content") or "")
 
 
-def _is_truthy(value: object) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return False
-    if isinstance(value, (int, float)):
-        return value != 0
-    if isinstance(value, str):
-        return value.strip().lower() in ("true", "yes", "1", "y")
-    return bool(value)
-
-
 def forbidden_tokens(config: ClientConfig) -> list[str]:
     """Derive quotable forbidden tokens from guardrails.never_say.
 
@@ -119,7 +107,7 @@ def check_sms_promise_without_consent(config, turns, meta) -> list[TranscriptFin
     consent_field = consent_field_name(config)
     custom = meta.get("custom_analysis_data") or {}
     consent_value = custom.get(consent_field) if consent_field else None
-    if _is_truthy(consent_value):
+    if is_truthy(consent_value):
         return []  # consent captured -> texting promises are allowed
     findings: list[TranscriptFinding] = []
     for i, content in _agent_turns(turns):

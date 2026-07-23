@@ -46,20 +46,22 @@ Everything left of the Retell API is deterministic Python. The model is confined
 - **Post-call webhook service.** FastAPI endpoint that verifies Retell's signature, parses the analyzed call into a lead, resolves which client owns the agent via the lockfiles, and dispatches an alert (email or debug log).
 - **Consent-gated booking SMS.** Sends a booking-link text via the Twilio REST API only when consent, a booking URL, a captured consent flag, and a normalizable US phone all hold — with a send-once JSONL ledger so a webhook retry never double-texts.
 - **Eval harness.** Layer 1 static prompt-policy checks (no network, gated in CI); Layer 2 deterministic transcript checks over real fetched calls.
-- **CLI tooling.** Preview a compiled prompt (`render_prompt.py`), plan/apply a deployment (`deploy_client.py`), run the webhook service (`run_webhook.py`), and fetch call transcripts (`fetch_calls.py`).
+- **CLI tooling.** Preview a compiled prompt (`render_prompt.py`), plan/apply a deployment (`deploy_client.py`), and run the webhook service (`run_webhook.py`). Transcript fetching (`fetch_calls.py`) is deliberately hard-restricted to the agents in `config/clients/acme-wellness.lock.json` — it is the eval-harness feeder, not a general call exporter.
 
 ## Technology stack
 
-| Tech | Version | Why |
+`pyproject.toml` declares dependencies **unpinned** (only `pydantic>=2` carries a bound), so a fresh install resolves to current releases. The versions below are what a clean `pip install -e ".[dev]"` resolved to on 2026-07-23 — treat them as "known good", not as a lockfile.
+
+| Tech | Resolved version | Why |
 |---|---|---|
-| Python | ≥ 3.11 | Language runtime (`match`, `X \| None`, `datetime.UTC`). |
+| Python | ≥ 3.11 (declared) | `datetime.UTC` (3.11+) and PEP 604 `X \| None` annotations. |
 | pydantic | 2.13.4 | The config schema, strict validation, and aggregated error reporting. |
 | httpx | 0.28.1 | Single HTTP client for **both** the Retell and Twilio REST APIs — no vendor SDKs, and a `MockTransport` makes those calls unit-testable. |
 | FastAPI | 0.139.2 | The post-call webhook endpoint. |
 | uvicorn | 0.51.0 | ASGI server for the webhook service. |
 | PyYAML | 6.0.3 | Reading client config files. |
-| tzdata | (installed) | IANA timezone validation that works on Windows too (no system tz db there). |
-| python-dotenv | (installed) | Loading `.env` for API keys and service settings. |
+| tzdata | 2026.3 | IANA timezone validation that works on Windows too (no system tz db there). |
+| python-dotenv | 1.2.2 | Loading `.env` for API keys and service settings. |
 | Twilio | via REST | Booking SMS is sent by POSTing to Twilio's Messages API over httpx — no `twilio` package dependency. |
 | ruff | 0.15.22 | Lint + import sort (`E,F,I,W,UP,B`, line length 100). |
 | pytest | 9.1.1 | Test runner. |
@@ -80,7 +82,7 @@ scripts/      deploy_client.py, render_prompt.py, run_webhook.py, fetch_calls.py
 evals/        static_checks.py, run_static.py, transcript_checks.py, run_transcripts.py
 config/       client.example.yaml   (clients/ is gitignored — real configs + lockfiles)
 docs/         deployment.md, decisions.md, case-studies/
-tests/        129 tests
+tests/        137 tests
 ```
 
 ## Getting started
@@ -92,6 +94,8 @@ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\Act
 pip install -e ".[dev]"
 cp .env.example .env                                # then edit .env
 ```
+
+The editable install is required — the scripts and evals import `dma_deploy_kit`, and several modules locate `config/clients/` and `var/` relative to the source tree.
 
 ### Environment variables
 
@@ -110,9 +114,14 @@ Only `RETELL_API_KEY` is needed to deploy agents. The rest are for the optional 
 ```bash
 python scripts/render_prompt.py config/client.example.yaml --language en-US   # preview a prompt
 python scripts/deploy_client.py config/client.example.yaml                    # dry-run plan
-python scripts/run_webhook.py                                                 # webhook service on :8010
 python evals/run_static.py                                                    # static prompt checks
+python scripts/run_webhook.py                                                 # webhook service on :8010
 ```
+
+Notes on the two that touch the outside world:
+
+- **`deploy_client.py` (dry-run)** needs no API key and makes no network calls *while no lockfile exists* — it plans a `CREATE` per language offline. Once `config/clients/<slug>.lock.json` exists, the dry-run issues read-only `get-agent` / `get-retell-llm` calls to Retell to diff against live state, so it does need `RETELL_API_KEY` from then on. It never mutates without `--apply`.
+- **`run_webhook.py`** fails closed: with no `RETELL_WEBHOOK_KEY` it exits non-zero with `RuntimeError: RETELL_WEBHOOK_KEY is missing`. With the key set it serves `/healthz` (`{"status":"ok","managed_agents":N}`) and `/webhook/retell`, which returns **401** for any request without a valid `X-Retell-Signature`. Logs go to `postcall.log`.
 
 ### Test commands
 
@@ -122,11 +131,13 @@ pytest
 python evals/run_static.py
 ```
 
+`run_static.py` always checks `config/client.example.yaml`, plus any `config/clients/*.yaml` you have locally. Those are gitignored, so CI sees only the example — expected.
+
 See [docs/deployment.md](docs/deployment.md) for the full new-client walkthrough.
 
 ## Example workflow
 
-The **tooling** path from clone to two live agents is **26 seconds, measured** (fresh clone → `--apply` complete). That is the point: the real cost of a new client isn't engineering — it's gathering the business facts that fill the config (hours, services, guardrails, voices, escalation). Once you have those, standing up the agents is essentially free, so the **engineering cost per additional client approaches zero**. The number below is the tooling floor, not the onboarding total.
+The **tooling** path from clone to two live agents is dominated by `pip install`; every kit-owned step — config generation, dry-run, apply — is sub-second. That is the point: the real cost of a new client isn't engineering, it's gathering the business facts that fill the config (hours, services, guardrails, voices, escalation). Once you have those, standing up the agents is essentially free, so the **engineering cost per additional client approaches zero**.
 
 ```bash
 # 1. clone + install (once per machine)
@@ -149,7 +160,7 @@ python scripts/deploy_client.py config/clients/acme-wellness.yaml
 # 5. test the agents from the Retell dashboard
 ```
 
-*Methodology:* the 26 seconds is wall-clock time from `git clone` to `--apply` completing, on a fresh clone from GitHub, with the config edit **scripted** (a small generator that copies the example and sets Blue Palm Studio's fields) so the number excludes human typing/decision time. Everything else is real and included. Breakdown: clone **1s**, `pip install -e ".[dev]"` **22s** (dominates; dependencies were pip-cached — a cold cache would be slower), config generation **<1s**, dry-run **1s**, `--apply` (create 2 LLMs + 2 agents on Retell) **2s**. The measured deploy created two real agents and was torn down afterward (agents + LLMs deleted, verified 404).
+*What has been measured:* the offline steps — clone, scripted config generation (a small generator that copies the example and sets a second client's fields, so no human typing time is counted), and the first-time dry-run plan — total well under two seconds on a warm machine. The two remaining steps are not offline-reproducible and are therefore not quoted here: `pip install -e ".[dev]"` depends on network and pip-cache state and dominates the wall clock, and `--apply` depends on live Retell API latency. An end-to-end figure was recorded during development against a real account (two agents created, then torn down and verified deleted); it is deliberately not restated as a headline number, because it is not reproducible from this repo alone.
 
 ## AI
 
@@ -165,7 +176,7 @@ This kit does **not** do retrieval-augmented generation, model routing, or custo
 
 ## Developer experience
 
-- **129 tests** (`pytest`), running in ~1–2 seconds; external APIs (Retell, Twilio) are exercised through httpx `MockTransport`, and the webhook flow through FastAPI's `TestClient`.
+- **137 tests** (`pytest`), running in ~1–2 seconds; external APIs (Retell, Twilio) are exercised through httpx `MockTransport`, and the webhook flow through FastAPI's `TestClient`. The suite is hermetic: tests that assert env-dependent behavior clear the relevant variables, so a machine with real Twilio or `WEBHOOK_BASE_URL` settings gets the same result as CI.
 - **ruff** for lint + import sorting (`select = E, F, I, W, UP, B`, line length 100).
 - **CI** (`.github/workflows/ci.yml`, Python 3.11 on ubuntu-latest) runs four steps on every push and PR: install, `ruff check .`, `pytest`, and `python evals/run_static.py` (the static-eval gate).
 - **No hidden state in tests.** Side-effecting resources (SMS ledger, alert sinks) are injected in tests so nothing writes to real runtime files — a lesson learned the hard way (see below).
@@ -195,4 +206,4 @@ Deferred, with rationale, in [docs/decisions.md](docs/decisions.md#roadmap-defer
 
 ## Proof, not claims
 
-The repo *is* the proof: 129 passing tests, a CI-gated static-eval, and a fresh-clone deployment timed end-to-end (26 seconds, above). The eval harness has been run against real calls placed to the live Acme test agents (all clean). Deployment history for real clients is private by design — see [docs/case-studies/](docs/case-studies/) for a truthful index without client data.
+The repo *is* the proof: 137 passing tests, a CI-gated static-eval, and a fresh-clone deployment exercised end-to-end (above). The eval harness has been run against real calls placed to the live Acme test agents (all clean). Deployment history for real clients is private by design — see [docs/case-studies/](docs/case-studies/) for a truthful index without client data.

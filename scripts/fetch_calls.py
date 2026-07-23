@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -74,7 +75,6 @@ def main() -> int:
     args = parser.parse_args()
 
     load_dotenv(REPO_ROOT / ".env")
-    import os
     key = os.environ.get("RETELL_API_KEY", "").strip()
     if not key:
         print("RETELL_API_KEY is not set.", file=sys.stderr)
