@@ -15,7 +15,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 
@@ -54,7 +55,19 @@ def create_app(
     ledger = sms_ledger if sms_ledger is not None else SmsLedger(DEFAULT_LEDGER_PATH)
     logger.info("webhook service starting; %d managed agent(s) registered", len(reg))
 
-    app = FastAPI(title="dma-deploy-kit post-call webhook")
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            # TwilioSms owns an httpx.Client; release it however the app exits —
+            # a crash or cancellation during serving must not leak the connection
+            # pool. Sinks without a close() (DebugSms, doubles) need no teardown.
+            close = getattr(sms, "close", None)
+            if callable(close):
+                close()
+
+    app = FastAPI(title="dma-deploy-kit post-call webhook", lifespan=lifespan)
 
     @app.get("/healthz")
     async def healthz() -> dict:

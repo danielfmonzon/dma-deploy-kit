@@ -13,6 +13,7 @@ from dma_deploy_kit.agent import constants
 from dma_deploy_kit.agent.deploy import (
     DeployError,
     RetellClient,
+    apply,
     build_desired_state,
     plan,
     read_lockfile,
@@ -56,7 +57,7 @@ def _load_cli():
     scripts_dir = str(REPO_ROOT / "scripts")
     if scripts_dir not in sys.path:
         sys.path.insert(0, scripts_dir)
-    import deploy_client  # noqa: PLC0415
+    import deploy_client
 
     return deploy_client
 
@@ -64,8 +65,12 @@ def _load_cli():
 # --------------------------------------------------------------------------- #
 # sms_consent warning (CLI)
 # --------------------------------------------------------------------------- #
-def test_sms_consent_warning_appears_for_acme(acme, tmp_path):
+def test_sms_consent_warning_appears_for_acme(acme, tmp_path, monkeypatch):
     cli = _load_cli()
+    # This asserts the no-Twilio variant, so the ambient environment must not
+    # supply Twilio credentials (it does on any machine configured for real SMS).
+    for k in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"):
+        monkeypatch.delenv(k, raising=False)
     assert acme.booking.sms_consent is True
     result = plan(acme, client=None, lockfile=tmp_path / "acme.lock.json")
     out = cli.format_plan(result, acme)
@@ -290,3 +295,107 @@ def test_plan_update_diffs_changed_fields(acme, tmp_path):
 def test_plan_update_requires_client(acme, tmp_path):
     with pytest.raises(DeployError):
         plan(acme, client=None, lockfile=_lockfile_for(acme, tmp_path))
+
+
+# --------------------------------------------------------------------------- #
+# apply: the only mutating path — recorded against a mock transport
+# --------------------------------------------------------------------------- #
+def _recording_client(acme, calls: list[dict], live_overrides=None):
+    """RetellClient that records every request and serves GETs from desired state."""
+    states = {s["code"]: s for s in build_desired_state(acme)}
+    id_to_code = {}
+    for code in states:
+        id_to_code[f"agent::{code}"] = code
+        id_to_code[f"llm::{code}"] = code
+    overrides = live_overrides or {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        body = json.loads(request.content) if request.content else None
+        calls.append({"method": request.method, "path": path, "body": body})
+        if path.startswith("/get-agent/"):
+            code = id_to_code[path.rsplit("/", 1)[1]]
+            live = dict(states[code]["agent"])
+            live.update(overrides.get(("agent", code), {}))
+            return httpx.Response(200, json=live)
+        if path.startswith("/get-retell-llm/"):
+            code = id_to_code[path.rsplit("/", 1)[1]]
+            live = dict(states[code]["llm"])
+            live.update(overrides.get(("llm", code), {}))
+            return httpx.Response(200, json=live)
+        if path == "/create-retell-llm":
+            return httpx.Response(200, json={"llm_id": "llm_new"})
+        if path == "/create-agent":
+            return httpx.Response(200, json={"agent_id": "agent_new"})
+        if path.startswith("/update-retell-llm/") or path.startswith("/update-agent/"):
+            return httpx.Response(200, json={})
+        return httpx.Response(404, json={"error": f"unexpected {path}"})
+
+    return RetellClient(transport=httpx.MockTransport(handler))
+
+
+def test_apply_create_writes_lockfile_and_wires_response_engine(acme, tmp_path):
+    calls: list[dict] = []
+    client = _recording_client(acme, calls)
+    lock_path = tmp_path / "acme.lock.json"
+    plan_result = plan(acme, client=None, lockfile=lock_path)
+
+    lock = apply(acme, plan_result, client, lockfile=lock_path)
+
+    # LLM is created before the agent, and the agent's response_engine points at it
+    ordered = [(c["method"], c["path"]) for c in calls]
+    assert ordered.count(("POST", "/create-retell-llm")) == 2
+    assert ordered.count(("POST", "/create-agent")) == 2
+    assert ordered.index(("POST", "/create-retell-llm")) < ordered.index(("POST", "/create-agent"))
+    agent_bodies = [c["body"] for c in calls if c["path"] == "/create-agent"]
+    for body in agent_bodies:
+        assert body["response_engine"] == {"type": "retell-llm", "llm_id": "llm_new"}
+
+    # lockfile is written to disk and returned, keyed by language
+    assert set(lock) == {"en-US", "es-419"}
+    assert lock["en-US"] == {"agent_id": "agent_new", "llm_id": "llm_new"}
+    assert read_lockfile(lock_path) == lock
+
+
+def test_apply_update_patches_only_changed_fields(acme, tmp_path):
+    calls: list[dict] = []
+    client = _recording_client(
+        acme,
+        calls,
+        live_overrides={
+            ("agent", "en-US"): {"voice_speed": 0.5},
+            ("llm", "es-419"): {"general_prompt": "old prompt"},
+        },
+    )
+    lock_path = _lockfile_for(acme, tmp_path)
+    plan_result = plan(acme, client=client, lockfile=lock_path)
+    calls.clear()  # discard the plan's read-only GETs
+
+    apply(acme, plan_result, client, lockfile=lock_path)
+
+    patches = [c for c in calls if c["method"] == "PATCH"]
+    by_path = {c["path"]: c["body"] for c in patches}
+    # en-US: only the drifted agent field is patched, and no LLM patch at all
+    assert by_path["/update-agent/agent::en-US"] == {"voice_speed": 1}
+    assert "/update-retell-llm/llm::en-US" not in by_path
+    # es-419: only the drifted LLM field is patched, and no agent patch at all
+    assert set(by_path["/update-retell-llm/llm::es-419"]) == {"general_prompt"}
+    assert "/update-agent/agent::es-419" not in by_path
+    # nothing was created
+    assert not [c for c in calls if c["path"].startswith("/create-")]
+
+
+def test_apply_noop_issues_no_mutations(acme, tmp_path):
+    calls: list[dict] = []
+    client = _recording_client(acme, calls)
+    lock_path = _lockfile_for(acme, tmp_path)
+    plan_result = plan(acme, client=client, lockfile=lock_path)
+    assert [i["action"] for i in plan_result["items"]] == ["NOOP", "NOOP"]
+    calls.clear()
+
+    lock = apply(acme, plan_result, client, lockfile=lock_path)
+
+    assert [c for c in calls if c["method"] in ("POST", "PATCH")] == []
+    # the lockfile survives a NOOP apply unchanged
+    assert set(lock) == {"en-US", "es-419"}
+    assert read_lockfile(lock_path) == lock

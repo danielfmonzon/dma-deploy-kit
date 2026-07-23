@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from pathlib import Path
@@ -17,6 +18,7 @@ from dma_deploy_kit.postcall import (
     DebugSms,
     EmailAlert,
     SmsLedger,
+    SmsResult,
     build_signature,
     check_signature,
     create_app,
@@ -46,10 +48,10 @@ def registry(acme):
 def _app(registry, tmp_path, **kwargs):
     """create_app with SMS injected to a temp ledger so tests never touch var/."""
     kwargs.setdefault("alert_factory", lambda m: DebugAlert())
+    kwargs.setdefault("sms_sink", DebugSms())
     return create_app(
         webhook_key=KEY,
         registry=registry,
-        sms_sink=DebugSms(),
         sms_ledger=SmsLedger(tmp_path / "sms.jsonl"),
         **kwargs,
     )
@@ -403,3 +405,68 @@ def test_default_alert_factory_selects_sink(acme, monkeypatch):
     # alert_email set but SMTP absent -> DebugAlert fallback
     monkeypatch.delenv("SMTP_HOST", raising=False)
     assert isinstance(default_alert_factory(meta_email), DebugAlert)
+
+
+# --------------------------------------------------------------------------- #
+# lifespan: the SMS sink is released on shutdown
+# --------------------------------------------------------------------------- #
+class _ClosableSms:
+    """SmsSink that records close() calls (stands in for TwilioSms)."""
+
+    def __init__(self) -> None:
+        self.sent: list[dict] = []
+        self.close_calls = 0
+
+    def send(self, to_e164: str, body: str, idempotency_key: str):
+        self.sent.append({"to": to_e164, "body": body, "idempotency_key": idempotency_key})
+        return SmsResult(status="debug", to=to_e164, call_id=idempotency_key)
+
+    def close(self) -> None:
+        self.close_calls += 1
+
+
+def test_lifespan_closes_sms_sink_exactly_once(registry, tmp_path):
+    """The `with TestClient(...)` form fires startup/shutdown, unlike bare TestClient."""
+    sink = _ClosableSms()
+    app = _app(registry, tmp_path, sms_sink=sink)
+
+    assert sink.close_calls == 0  # building the app must not close anything
+    with TestClient(app) as client:
+        assert client.get("/healthz").status_code == 200
+        assert sink.close_calls == 0  # still open while serving
+    assert sink.close_calls == 1
+
+    # a bare TestClient (no context manager) never runs lifespan — no extra close
+    TestClient(app).get("/healthz")
+    assert sink.close_calls == 1
+
+
+def test_lifespan_tolerates_sink_without_close(registry, tmp_path):
+    """DebugSms has no close(); shutdown must complete without raising."""
+    sink = DebugSms()
+    assert not hasattr(sink, "close")
+    app = _app(registry, tmp_path, sms_sink=sink)
+
+    with TestClient(app) as client:
+        assert client.get("/healthz").status_code == 200
+    # exiting the block ran shutdown; reaching here means no exception was raised
+
+
+def test_lifespan_closes_sink_when_app_lifetime_is_torn_down_by_error(registry, tmp_path):
+    """A cancellation/exception thrown into the running app must still close.
+
+    This drives the lifespan context manager directly rather than through
+    TestClient: a handler exception never reaches the lifespan generator, so
+    only throwing in at the yield point exercises the try/finally.
+    """
+    sink = _ClosableSms()
+    app = _app(registry, tmp_path, sms_sink=sink)
+
+    async def drive() -> None:
+        with pytest.raises(RuntimeError, match="kaboom"):
+            async with app.router.lifespan_context(app):
+                assert sink.close_calls == 0  # open while the app is alive
+                raise RuntimeError("kaboom")  # the serving task dies
+
+    asyncio.run(drive())
+    assert sink.close_calls == 1
