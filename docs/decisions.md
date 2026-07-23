@@ -24,7 +24,7 @@ of them. One line of rationale each; the code is the full story.
 
 | Item | Date recorded | Rationale for deferral |
 |---|---|---|
-| LLM-judge eval layer (Layer 3) | 2026-07-20 | Deterministic checks land first; a judged layer for tone/faithfulness is additive and needs a rubric + cost budget. |
+| LLM-judge eval layer (Layer 4) | 2026-07-20 | Deterministic checks land first; a judged layer for tone/faithfulness is additive and needs a rubric + cost budget. (Renumbered from Layer 3 once latency budgets shipped as Layer 3.) |
 | Voice pre-flight inside `plan` | 2026-07-20 | We caught an invented voice id by hand; the planner should validate every `voice_id` against `list-voices` before apply. |
 | Incremental per-language lockfile writes | 2026-07-20 | `apply` writes the lockfile once at the end; a mid-apply failure can orphan resources. Write per language so partial applies self-heal. |
 | Field ownership / explicit unset | 2026-07-20 | The differ only sees emitted fields; omitted ones (e.g. `webhook_url` when unset) can't be detected or cleared through a plan. |
