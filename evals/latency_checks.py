@@ -92,6 +92,16 @@ def check_call_latency(call: dict, budget: LatencyBudget = DEFAULT_BUDGET) -> li
 
 ALL_CHECKS = [check_call_latency]
 
+# Authoritative set of every ``check`` value this layer can emit, derived from the
+# budgeted-metric table so it can never drift from what check_call_latency
+# actually produces. Consumers (e.g. the fixture runner) validate expectations
+# against this instead of guessing.
+CHECK_NAMES = frozenset(
+    {"latency_data_missing"}
+    | {f"latency_category_missing:{cat}" for cat, _, _ in _BUDGETED_METRICS}
+    | {f"{attr}_over_budget" for _, _, attr in _BUDGETED_METRICS}
+)
+
 
 def run_all(call: dict, budget: LatencyBudget = DEFAULT_BUDGET) -> list[LatencyFinding]:
     findings: list[LatencyFinding] = []

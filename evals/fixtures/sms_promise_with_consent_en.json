@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "description": "The same texting promise is clean when consent_to_text is true, proving the consent gate (not just the trigger).",
+  "language": "en-US",
+  "call": {
+    "call_id": "fixture_sms_promise_with_consent_en",
+    "transcript_object": [
+      { "role": "agent", "content": "Thanks for calling Acme Wellness, this is Ava. How can I help you today?" },
+      { "role": "user", "content": "Could you send me the booking link by text?" },
+      { "role": "agent", "content": "Of course — I'll text you the booking link now. Is the number you're calling from okay to receive it?" },
+      { "role": "user", "content": "Yes, that's fine, please text me there." },
+      { "role": "agent", "content": "Perfect, sending it your way. Thanks for calling Acme Wellness!" }
+    ],
+    "call_analysis": {
+      "custom_analysis_data": {
+        "service_interest": "Signature Facial",
+        "consent_to_text": true
+      }
+    }
+  },
+  "expect": {
+    "transcript": []
+  }
+}

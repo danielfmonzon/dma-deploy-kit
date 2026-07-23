@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "description": "A normal English booking call with a proper greeting and human handoff fires no transcript checks.",
+  "language": "en-US",
+  "call": {
+    "call_id": "fixture_clean_booking_en",
+    "transcript_object": [
+      { "role": "agent", "content": "Thanks for calling Acme Wellness, this is Ava. How can I help you today?" },
+      { "role": "user", "content": "Hi, I'd like to book a signature facial." },
+      { "role": "agent", "content": "Wonderful — our Signature Facial is a 60-minute treatment with a licensed esthetician. Would you like a time this week?" },
+      { "role": "user", "content": "Yes, Friday afternoon if possible." },
+      { "role": "agent", "content": "Let me have Jordan, our patient coordinator, confirm an exact slot. May I take your name and best callback number?" },
+      { "role": "user", "content": "Sure, it's Taylor Rivers, 555-0175." },
+      { "role": "agent", "content": "Thank you, Taylor. Jordan will reach out shortly to lock in Friday afternoon. Anything else I can help with?" },
+      { "role": "user", "content": "No, that's all, thanks." },
+      { "role": "agent", "content": "Thanks so much for calling Acme Wellness — take care and we'll see you soon!" }
+    ],
+    "call_analysis": {
+      "custom_analysis_data": {
+        "caller_name": "Taylor Rivers",
+        "caller_phone": "5550175",
+        "service_interest": "Signature Facial",
+        "appointment_urgency": "this_week",
+        "consent_to_text": false
+      }
+    }
+  },
+  "expect": {
+    "transcript": []
+  }
+}

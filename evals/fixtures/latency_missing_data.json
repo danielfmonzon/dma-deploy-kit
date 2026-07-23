@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "description": "A call payload with no latency key surfaces the latency_data_missing check rather than being silently skipped.",
+  "language": "en-US",
+  "call": {
+    "call_id": "fixture_latency_missing_data",
+    "duration_ms": 41000,
+    "transcript_object": [
+      { "role": "agent", "content": "Thanks for calling Acme Wellness, this is Ava. How can I help you today?" },
+      { "role": "user", "content": "Do you offer free consultations?" },
+      { "role": "agent", "content": "Yes, new-client consultations are complimentary and take about twenty minutes. Would you like one?" },
+      { "role": "user", "content": "I'll call back, thanks." },
+      { "role": "agent", "content": "Sounds good. Thanks for calling Acme Wellness!" }
+    ]
+  },
+  "expect": {
+    "latency": ["latency_data_missing"]
+  }
+}

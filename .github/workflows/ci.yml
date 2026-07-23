@@ -28,3 +28,6 @@ jobs:
 
       - name: Static prompt policy checks (eval Layer 1)
         run: python evals/run_static.py
+
+      - name: Golden fixture suite (eval Layers 2+3)
+        run: python evals/run_fixtures.py

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "description": "The agent claims a treatment is FDA-approved, a never_say token from the example guardrails, tripping forbidden_phrase.",
+  "language": "en-US",
+  "call": {
+    "call_id": "fixture_forbidden_phrase_en",
+    "transcript_object": [
+      { "role": "agent", "content": "Thanks for calling Acme Wellness, this is Ava. How can I help you today?" },
+      { "role": "user", "content": "Is the laser treatment safe? Is it approved?" },
+      { "role": "agent", "content": "Our laser treatment is FDA-approved and completely safe for everyone." },
+      { "role": "user", "content": "Oh, good to know." },
+      { "role": "agent", "content": "If you'd like, Jordan can walk you through the details. Thanks for calling Acme Wellness!" }
+    ],
+    "call_analysis": {
+      "custom_analysis_data": {
+        "service_interest": "Laser Hair Removal",
+        "consent_to_text": false
+      }
+    }
+  },
+  "expect": {
+    "transcript": ["forbidden_phrase"]
+  }
+}

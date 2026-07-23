@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "description": "Only e2e p90 exceeds its budget, so exactly the e2e_p90_over_budget check fires.",
+  "language": "en-US",
+  "call": {
+    "call_id": "fixture_latency_e2e_p90_breach",
+    "duration_ms": 68000,
+    "transcript_object": [
+      { "role": "agent", "content": "Thanks for calling Acme Wellness, this is Ava. How can I help you today?" },
+      { "role": "user", "content": "I'd like to know about the signature facial." },
+      { "role": "agent", "content": "It's a 60-minute customized facial with a licensed esthetician. Would you like to book one?" },
+      { "role": "user", "content": "Maybe later, thanks." },
+      { "role": "agent", "content": "Of course. Thanks for calling Acme Wellness!" }
+    ],
+    "latency": {
+      "e2e": { "p50": 2600, "p90": 4500, "num": 8 },
+      "llm": { "p50": 1300, "p90": 2100, "num": 10 },
+      "tts": { "p50": 120, "p90": 320, "num": 8 },
+      "asr": { "p50": 260, "p90": 820, "num": 7 }
+    }
+  },
+  "expect": {
+    "latency": ["e2e_p90_over_budget"]
+  }
+}

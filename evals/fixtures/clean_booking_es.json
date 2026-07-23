@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "description": "A normal Spanish booking call with a proper Spanish greeting fires no transcript checks.",
+  "language": "es-419",
+  "call": {
+    "call_id": "fixture_clean_booking_es",
+    "transcript_object": [
+      { "role": "agent", "content": "Gracias por llamar a Acme Wellness, habla Ava. ¿En qué puedo ayudarle hoy?" },
+      { "role": "user", "content": "Hola, quisiera agendar una consulta gratuita." },
+      { "role": "agent", "content": "¡Con mucho gusto! La consulta para nuevos clientes es gratuita y dura unos veinte minutos. ¿Le gustaría una cita esta semana?" },
+      { "role": "user", "content": "Sí, el jueves por la mañana estaría bien." },
+      { "role": "agent", "content": "Permítame comunicarle con Jordan, nuestra coordinadora, para confirmar la hora. ¿Me regala su nombre y un número de contacto?" },
+      { "role": "user", "content": "Claro, soy Camila Duarte, 555-0182." },
+      { "role": "agent", "content": "Gracias, Camila. Jordan le dará seguimiento para confirmar el jueves. ¿Algo más en que pueda ayudarle?" },
+      { "role": "user", "content": "No, eso es todo. Gracias." },
+      { "role": "agent", "content": "Muchas gracias por llamar a Acme Wellness, le atendió Ava. ¡Que tenga un excelente día!" }
+    ],
+    "call_analysis": {
+      "custom_analysis_data": {
+        "caller_name": "Camila Duarte",
+        "caller_phone": "5550182",
+        "service_interest": "Complimentary Consultation",
+        "appointment_urgency": "this_week",
+        "consent_to_text": false
+      }
+    }
+  },
+  "expect": {
+    "transcript": []
+  }
+}

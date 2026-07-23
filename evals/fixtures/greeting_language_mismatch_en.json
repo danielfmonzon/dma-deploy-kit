@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "description": "An en-US agent that opens in Spanish trips greeting_language, covering the English side of the check.",
+  "language": "en-US",
+  "call": {
+    "call_id": "fixture_greeting_language_mismatch_en",
+    "transcript_object": [
+      { "role": "agent", "content": "Gracias por llamar a Acme Wellness, habla Ava. ¿En qué puedo ayudarle hoy?" },
+      { "role": "user", "content": "Uh, do you speak English?" },
+      { "role": "agent", "content": "Yes, of course. How can I help you today?" },
+      { "role": "user", "content": "I wanted to ask about facials." },
+      { "role": "agent", "content": "Happy to help. Our Signature Facial is a 60-minute treatment with a licensed esthetician." },
+      { "role": "user", "content": "Great, thanks." },
+      { "role": "agent", "content": "Thanks for calling Acme Wellness!" }
+    ],
+    "call_analysis": {
+      "custom_analysis_data": {
+        "service_interest": "Signature Facial",
+        "consent_to_text": false
+      }
+    }
+  },
+  "expect": {
+    "transcript": ["greeting_language"]
+  }
+}

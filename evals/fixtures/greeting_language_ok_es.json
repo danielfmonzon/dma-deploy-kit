@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "description": "An es-419 agent that opens in proper Spanish is clean on the greeting_language check.",
+  "language": "es-419",
+  "call": {
+    "call_id": "fixture_greeting_language_ok_es",
+    "transcript_object": [
+      { "role": "agent", "content": "Gracias por llamar a Acme Wellness, habla Ava. ¿En qué puedo ayudarle hoy?" },
+      { "role": "user", "content": "Hola, quería información sobre los faciales." },
+      { "role": "agent", "content": "Con gusto. Nuestro Facial Signature dura sesenta minutos con una esteticista licenciada." },
+      { "role": "user", "content": "Perfecto, gracias." },
+      { "role": "agent", "content": "Muchas gracias por llamar a Acme Wellness. ¡Que tenga un excelente día!" }
+    ],
+    "call_analysis": {
+      "custom_analysis_data": {
+        "service_interest": "Signature Facial",
+        "consent_to_text": false
+      }
+    }
+  },
+  "expect": {
+    "transcript": []
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "description": "The agent promises to text the booking link while consent_to_text is false, tripping sms_promise_no_consent.",
+  "language": "en-US",
+  "call": {
+    "call_id": "fixture_sms_promise_no_consent_en",
+    "transcript_object": [
+      { "role": "agent", "content": "Thanks for calling Acme Wellness, this is Ava. How can I help you today?" },
+      { "role": "user", "content": "Can you send me the booking link?" },
+      { "role": "agent", "content": "Absolutely — I'll text you the booking link so you can pick a time that works." },
+      { "role": "user", "content": "Great, thanks." },
+      { "role": "agent", "content": "You're all set. Thanks for calling Acme Wellness!" }
+    ],
+    "call_analysis": {
+      "custom_analysis_data": {
+        "service_interest": "Signature Facial",
+        "consent_to_text": false
+      }
+    }
+  },
+  "expect": {
+    "transcript": ["sms_promise_no_consent"]
+  }
+}

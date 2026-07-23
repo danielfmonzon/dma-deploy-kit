@@ -153,6 +153,15 @@ ALL_CHECKS = [
     check_greeting_language,
 ]
 
+# Authoritative set of every ``check`` value this layer can emit. Consumers (e.g.
+# the fixture runner) validate expectations against this instead of guessing.
+CHECK_NAMES = frozenset({
+    "human_claim",
+    "sms_promise_no_consent",
+    "forbidden_phrase",
+    "greeting_language",
+})
+
 
 def run_all(config: ClientConfig, turns: list[dict], meta: dict) -> list[TranscriptFinding]:
     findings: list[TranscriptFinding] = []

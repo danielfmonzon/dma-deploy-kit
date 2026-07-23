@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "description": "An es-419 agent that opens in English trips greeting_language on the first agent turn.",
+  "language": "es-419",
+  "call": {
+    "call_id": "fixture_greeting_language_mismatch_es",
+    "transcript_object": [
+      { "role": "agent", "content": "Hi there, thanks for calling Acme Wellness. How can I help you today?" },
+      { "role": "user", "content": "Eh... ¿hola? Quería preguntar por los faciales." },
+      { "role": "agent", "content": "¡Claro! Con gusto le ayudo con nuestros faciales." },
+      { "role": "user", "content": "Gracias." },
+      { "role": "agent", "content": "Con gusto. ¡Que tenga buen día!" }
+    ],
+    "call_analysis": {
+      "custom_analysis_data": {
+        "service_interest": "Signature Facial",
+        "consent_to_text": false
+      }
+    }
+  },
+  "expect": {
+    "transcript": ["greeting_language"]
+  }
+}

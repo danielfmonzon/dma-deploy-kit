@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "description": "All latency percentiles sit under DEFAULT_BUDGET, so the latency layer is clean.",
+  "language": "en-US",
+  "call": {
+    "call_id": "fixture_latency_within_budget",
+    "duration_ms": 72000,
+    "transcript_object": [
+      { "role": "agent", "content": "Thanks for calling Acme Wellness, this is Ava. How can I help you today?" },
+      { "role": "user", "content": "Just checking your hours." },
+      { "role": "agent", "content": "We're open Monday through Friday, nine to six, and Saturday ten to four. Anything else?" },
+      { "role": "user", "content": "That's all, thanks." },
+      { "role": "agent", "content": "Thanks for calling Acme Wellness — take care!" }
+    ],
+    "latency": {
+      "e2e": { "p50": 2400, "p90": 3500, "num": 8 },
+      "llm": { "p50": 1200, "p90": 2000, "num": 10 },
+      "tts": { "p50": 110, "p90": 300, "num": 8 },
+      "asr": { "p50": 250, "p90": 800, "num": 7 }
+    }
+  },
+  "expect": {
+    "latency": []
+  }
+}
