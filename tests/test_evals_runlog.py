@@ -49,6 +49,27 @@ def test_fingerprint_of_compiled_prompt_stable(acme):
 
 
 # --------------------------------------------------------------------------- #
+# fingerprint_key — path-qualified, POSIX, collision-free
+# --------------------------------------------------------------------------- #
+def test_fingerprint_key_format_and_posix():
+    # Absolute path under the repo root collapses to a relative POSIX key.
+    abs_path = REPO_ROOT / "config" / "client.example.yaml"
+    assert runlog.fingerprint_key(abs_path, "en-US") == "config/client.example.yaml::en-US"
+    # A relative path is used as-is (still POSIX-normalized).
+    assert (
+        runlog.fingerprint_key("config/clients/acme-wellness.yaml", "es-419")
+        == "config/clients/acme-wellness.yaml::es-419"
+    )
+
+
+def test_fingerprint_key_distinct_for_same_slug_different_paths():
+    # Both files carry slug "acme-wellness"; the path qualifier keeps keys distinct.
+    k1 = runlog.fingerprint_key("config/client.example.yaml", "en-US")
+    k2 = runlog.fingerprint_key("config/clients/acme-wellness.yaml", "en-US")
+    assert k1 != k2
+
+
+# --------------------------------------------------------------------------- #
 # RunRecord round-trip
 # --------------------------------------------------------------------------- #
 def test_run_record_round_trip(tmp_path):
@@ -123,6 +144,8 @@ def test_run_static_writes_record(tmp_path, monkeypatch, capsys):
     assert rec.layer == "static"
     assert rec.prompt_fingerprints  # non-empty
     assert all(len(fp) == 64 for fp in rec.prompt_fingerprints.values())
+    assert all("::" in k for k in rec.prompt_fingerprints)  # path::code key form
+    assert "config/client.example.yaml::en-US" in rec.prompt_fingerprints
     assert rec.finding_count == 0
     assert rec.findings == []
 
@@ -168,6 +191,8 @@ def test_run_transcripts_clean_writes_record(tmp_path, monkeypatch, capsys):
     rec = runlog.read_run_record(records[0])
     assert rec.layer == "transcript"
     assert rec.prompt_fingerprints
+    assert all("::" in k for k in rec.prompt_fingerprints)  # path::code key form
+    assert "config/client.example.yaml::en-US" in rec.prompt_fingerprints
     assert rec.finding_count == 0
     assert rec.sources == ["call_clean.json"]
 

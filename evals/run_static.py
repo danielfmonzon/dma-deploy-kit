@@ -12,7 +12,13 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from runlog import DEFAULT_RUNS_DIR, RunRecord, prompt_fingerprint, write_run_record
+from runlog import (
+    DEFAULT_RUNS_DIR,
+    RunRecord,
+    fingerprint_key,
+    prompt_fingerprint,
+    write_run_record,
+)
 from static_checks import run_all
 
 from dma_deploy_kit.agent.prompt import compile_prompt
@@ -49,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"== {rel} ({config.client.slug}) ==")
         for lp in config.languages:
             prompt = compile_prompt(config, lp)
-            fingerprints[f"{config.client.slug}/{lp.code}"] = prompt_fingerprint(prompt)
+            fingerprints[fingerprint_key(path, lp.code)] = prompt_fingerprint(prompt)
             findings = run_all(config, lp.code, prompt)
             if not findings:
                 print(f"  [{lp.code}] OK ({len(prompt)} chars)")

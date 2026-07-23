@@ -33,6 +33,23 @@ def prompt_fingerprint(prompt: str) -> str:
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
 
 
+def fingerprint_key(source: Path | str, language_code: str) -> str:
+    """Build a prompt_fingerprints key: "{source_relpath_posix}::{language_code}".
+
+    The source path is made relative to the repo root and rendered POSIX-style so
+    records are byte-identical across Windows and CI. Qualifying by path (not slug)
+    prevents same-slug collisions, e.g. client.example.yaml and a local
+    clients/acme-wellness.yaml that both carry slug "acme-wellness".
+    """
+    p = Path(source)
+    if p.is_absolute():
+        try:
+            p = p.resolve().relative_to(REPO_ROOT)
+        except ValueError:
+            p = Path(source)  # outside the repo — keep as given
+    return f"{p.as_posix()}::{language_code}"
+
+
 def git_short_commit(cwd: str | Path | None = None) -> str:
     """Return `git rev-parse --short HEAD`, or "unknown" on any failure.
 
