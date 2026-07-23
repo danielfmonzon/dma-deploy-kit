@@ -141,6 +141,27 @@ def test_webhook_url_from_env(acme, monkeypatch):
         assert "webhook_url" not in st["llm"]
 
 
+def test_plan_output_reports_real_webhook_url(acme, tmp_path, monkeypatch):
+    """A CREATE plan must print the webhook_url it will actually send."""
+    cli = _load_cli()
+    monkeypatch.setenv("WEBHOOK_BASE_URL", "https://tunnel.example.com")
+    result = plan(acme, client=None, lockfile=tmp_path / "acme.lock.json")
+    out = cli.format_plan(result, acme)
+    assert "webhook_url: https://tunnel.example.com/webhook/retell" in out
+    assert "(none" not in out
+
+
+def test_plan_output_reports_absent_webhook_url(acme, tmp_path, monkeypatch):
+    """With no WEBHOOK_BASE_URL the plan says so, and sends no webhook_url."""
+    cli = _load_cli()
+    monkeypatch.delenv("WEBHOOK_BASE_URL", raising=False)
+    result = plan(acme, client=None, lockfile=tmp_path / "acme.lock.json")
+    out = cli.format_plan(result, acme)
+    assert "webhook_url: (none — set WEBHOOK_BASE_URL" in out
+    for item in result["items"]:
+        assert "webhook_url" not in item["agent"]
+
+
 def test_post_call_analysis_data_mapped(acme):
     st = build_desired_state(acme)[0]
     pcad = st["agent"]["post_call_analysis_data"]

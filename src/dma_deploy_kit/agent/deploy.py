@@ -130,8 +130,10 @@ def build_desired_state(config: ClientConfig) -> list[dict]:
     Returns a list of dicts, one per language, each shaped:
         {"code", "agent_name", "agent": <managed agent fields>, "llm": <llm fields>}
 
-    The agent payload holds only fields the kit manages (no response_engine — its
-    llm_id is wired in during apply — and deliberately no webhook_url yet).
+    The agent payload holds only fields the kit manages. response_engine is absent
+    here — its llm_id is wired in during apply. webhook_url is included only when
+    WEBHOOK_BASE_URL is set in the environment; see the module docstring for why
+    an omitted field is invisible to the differ.
     """
     codes = [lp.code for lp in config.languages]
     # Match production: a multi-language client lists all codes; a single-language

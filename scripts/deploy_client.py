@@ -14,7 +14,6 @@ printing their text, so the output is safe to share (no secrets, no prompt text)
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -22,6 +21,7 @@ from dotenv import load_dotenv
 
 from dma_deploy_kit.agent.deploy import DeployError, RetellClient, apply, plan
 from dma_deploy_kit.config import ClientConfigError, load_client_config
+from dma_deploy_kit.postcall.sms import twilio_configured
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -29,6 +29,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 def _fmt_agent(agent: dict) -> list[str]:
     tags = agent.get("expressive_emotion_tags") or []
     pron = agent.get("pronunciation_dictionary") or []
+    # Report the webhook_url this plan will actually send. build_desired_state
+    # emits it only when WEBHOOK_BASE_URL is set, so "(none)" must be derived from
+    # the payload rather than hardcoded.
+    webhook = agent.get("webhook_url")
+    webhook_line = (
+        f"    webhook_url: {webhook}"
+        if webhook
+        else "    webhook_url: (none — set WEBHOOK_BASE_URL to wire the post-call service)"
+    )
     return [
         f"    agent_name: {agent['agent_name']}",
         f"    voice_id: {agent['voice_id']}  |  language: {agent['language']}",
@@ -37,7 +46,7 @@ def _fmt_agent(agent: dict) -> list[str]:
         f"interruption_sensitivity: {agent['interruption_sensitivity']}",
         f"    expressive_mode: {agent['enable_expressive_mode']}  |  tags: {tags}  |  "
         f"ambient_sound: {agent.get('ambient_sound')}  |  pronunciation entries: {len(pron)}",
-        "    webhook_url: (none — post-call service added later)",
+        webhook_line,
         f"    total managed agent fields: {len(agent)}",
     ]
 
@@ -80,18 +89,15 @@ SMS_CONSENT_NOTE_CONFIGURED = (
     "      deduplicated per call_id."
 )
 
-TWILIO_ENV_KEYS = ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER")
-
-
-def _twilio_configured() -> bool:
-    return all(os.environ.get(k, "").strip() for k in TWILIO_ENV_KEYS)
-
-
 def sms_consent_warning(config) -> str | None:
-    """SMS-consent banner: hard warning when Twilio is absent, softer note when set."""
+    """SMS-consent banner: hard warning when Twilio is absent, softer note when set.
+
+    Twilio detection is the single implementation in ``postcall.sms`` — this
+    script must not carry a second copy that can drift from it.
+    """
     if not config.booking.sms_consent:
         return None
-    return SMS_CONSENT_NOTE_CONFIGURED if _twilio_configured() else SMS_CONSENT_WARNING
+    return SMS_CONSENT_NOTE_CONFIGURED if twilio_configured() else SMS_CONSENT_WARNING
 
 
 def format_plan(plan_result: dict, config=None) -> str:
