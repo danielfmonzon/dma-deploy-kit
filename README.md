@@ -29,8 +29,9 @@ flowchart TD
     LOCK -.->|"agent_id to client"| LEAD
     LEAD --> ALERT["postcall.alerts<br/>Email / Debug"]
     LEAD --> SMS["postcall.sms<br/>Twilio REST / Debug + ledger"]
-    COMPILE -.->|"checked by"| STATIC["evals.static_checks<br/>run_static (CI gate)"]
-    RETELL -.->|"transcripts"| TRANSCRIPT["evals.transcript_checks<br/>fetch_calls + run_transcripts"]
+    COMPILE -.->|"checked by"| EVALS["evals — 4 layers + golden fixtures<br/>1 static (CI gate) · 2 transcript · 3 latency · 4 judge"]
+    RETELL -.->|"transcripts"| EVALS
+    EVALS -.->|"run records"| RECORDS[("var/evals/runs<br/>compare_runs.py")]
 ```
 
 Everything left of the Retell API is deterministic Python. The model is confined to the live conversation; deploy, diffing, post-call routing, SMS gating, and evals are all plain code.
@@ -45,7 +46,9 @@ Everything left of the Retell API is deterministic Python. The model is confined
 - **Guardrails.** Per-client `never_say` and `off_limits`, plus a `medical_adjacent` preset that stacks an engine-owned medical-safety block on top of the client's rules in `HARD RULES`.
 - **Post-call webhook service.** FastAPI endpoint that verifies Retell's signature, parses the analyzed call into a lead, resolves which client owns the agent via the lockfiles, and dispatches an alert (email or debug log).
 - **Consent-gated booking SMS.** Sends a booking-link text via the Twilio REST API only when consent, a booking URL, a captured consent flag, and a normalizable US phone all hold — with a send-once JSONL ledger so a webhook retry never double-texts.
-- **Eval harness.** Layer 1 static prompt-policy checks (no network, gated in CI); Layer 2 deterministic transcript checks over real fetched calls.
+- **Four-layer eval harness.** Static prompt-policy checks gate CI; deterministic transcript checks, latency-budget checks, and an LLM judge run advisory over real calls. A golden suite of synthetic fixtures also gates CI, so every push proves the checks still discriminate — not just that the code imports.
+- **LLM judge with citation enforcement.** Layer 4 scores each transcript against a fixed rubric via the Anthropic API; every "fail" must quote a verbatim span from a cited turn or it is downgraded — the judge is structurally barred from unverifiable claims, not merely asked to be honest. Requires `ANTHROPIC_API_KEY` and never runs in CI.
+- **Prompt-fingerprinted regression detection.** Every eval run writes a JSON record pinning the sha256 of each compiled prompt; `compare_runs.py` diffs two runs and flags a regression only when a check newly fires — so a prompt can change freely until it actually breaks something.
 - **CLI tooling.** Preview a compiled prompt (`render_prompt.py`), plan/apply a deployment (`deploy_client.py`), and run the webhook service (`run_webhook.py`). Transcript fetching (`fetch_calls.py`) is deliberately hard-restricted to the agents in `config/clients/acme-wellness.lock.json` — it is the eval-harness feeder, not a general call exporter.
 
 ## Technology stack
@@ -79,10 +82,13 @@ src/dma_deploy_kit/
 scripts/      deploy_client.py, render_prompt.py, run_webhook.py, fetch_calls.py,
               capture_retell.py, report_capture.py, report_prompt_structure.py,
               validate_reexpression.py
-evals/        static_checks.py, run_static.py, transcript_checks.py, run_transcripts.py
+evals/        static_checks.py, transcript_checks.py, latency_checks.py, judge_checks.py  (the 4 layers)
+              run_static.py / run_transcripts.py / run_latency.py / run_judge.py         (per-layer runners)
+              runlog.py (run records), run_fixtures.py (golden CI gate), compare_runs.py (regression diff)
+              fixtures/  (synthetic gating scenarios)
 config/       client.example.yaml   (clients/ is gitignored — real configs + lockfiles)
 docs/         deployment.md, decisions.md, case-studies/
-tests/        137 tests
+tests/        196 tests
 ```
 
 ## Getting started
@@ -170,23 +176,27 @@ python scripts/deploy_client.py config/clients/acme-wellness.yaml
 
 **Guardrails.** A client's `never_say` lines are rendered verbatim into `HARD RULES`. Setting `guardrails.preset: medical_adjacent` stacks an engine-owned medical-safety block (no diagnosis, no outcome guarantees, no dosage/aftercare advice, no FDA claims) on top of the client's own rules — the two accumulate rather than replace. Static evals assert the block is present when the preset is on and absent when it's off.
 
-**Eval strategy.** Two deterministic layers. **Layer 1** (`evals/static_checks.py`) checks the compiled prompt against policy — guardrail coverage, greeting language, section structure, caller/derived field placement — with no network, and gates CI. **Layer 2** (`evals/transcript_checks.py`) runs deterministic checks over real call transcripts — human-impersonation claims, SMS promises without captured consent, forbidden phrases derived from guardrails, and first-turn language. A judged (LLM-scored) layer is explicitly on the roadmap, not built.
+**Eval strategy.** Four layers plus two cross-cutting mechanisms. **Layer 1** (`evals/static_checks.py`) checks the compiled prompt against policy — guardrail coverage, greeting language, section structure, caller/derived field placement — with no network, and gates CI. **Layer 2** (`evals/transcript_checks.py`) runs deterministic checks over real call transcripts — human-impersonation claims, SMS promises without captured consent, forbidden phrases derived from guardrails, and first-turn language. **Layer 3** (`evals/latency_checks.py`) compares each call's e2e/llm/tts/asr percentiles against a documented budget. **Layer 4** (`evals/judge_checks.py`) has an LLM score each transcript on a fixed rubric (booking intent, hallucinated commitments vs. the compiled FACTS, unresolved requests) via the Anthropic API, with *citation enforcement*: a "fail" whose quote isn't found verbatim in a cited turn is downgraded to `judge_citation_unverified` rather than asserted. Layers 2–4 are advisory over real calls. Cross-cutting: a golden synthetic-fixture suite (`evals/run_fixtures.py`) gates CI so the checks are proven to still discriminate on every push, and every run writes a prompt-fingerprinted record that `evals/compare_runs.py` diffs for regressions.
+
+Two honest notes on discrimination power. Layer 4's is proven by *synthetic* tests — a fabricated-quote verdict is downgraded, a malformed reply becomes `judge_output_invalid` — not by real catches: the five real Acme calls judged all passed. Layer 3 holds the one real-data catch — one captured production call's e2e p90 of 4414 ms exceeds the 4000 ms budget, and the layer flagged it.
 
 This kit does **not** do retrieval-augmented generation, model routing, or custom streaming — Retell owns the realtime media and model invocation; the kit owns configuration, deployment, and post-call handling.
 
 ## Developer experience
 
-- **137 tests** (`pytest`), running in ~1–2 seconds; external APIs (Retell, Twilio) are exercised through httpx `MockTransport`, and the webhook flow through FastAPI's `TestClient`. The suite is hermetic: tests that assert env-dependent behavior clear the relevant variables, so a machine with real Twilio or `WEBHOOK_BASE_URL` settings gets the same result as CI.
+- **196 tests** (`pytest`), running in a few seconds; external APIs (Retell, Twilio, Anthropic) are exercised through httpx `MockTransport`, and the webhook flow through FastAPI's `TestClient`. The suite is hermetic: tests that assert env-dependent behavior clear the relevant variables, so a machine with real Twilio, Anthropic, or `WEBHOOK_BASE_URL` settings gets the same result as CI.
 - **ruff** for lint + import sorting (`select = E, F, I, W, UP, B`, line length 100).
-- **CI** (`.github/workflows/ci.yml`, Python 3.11 on ubuntu-latest) runs four steps on every push and PR: install, `ruff check .`, `pytest`, and `python evals/run_static.py` (the static-eval gate).
+- **CI** (`.github/workflows/ci.yml`, Python 3.11 on ubuntu-latest) runs five steps on every push and PR: install, `ruff check .`, `pytest`, `python evals/run_static.py` (the static-eval gate), and `python evals/run_fixtures.py` (the golden fixture gate). The judge layer never runs in CI — it needs a key CI doesn't have.
 - **No hidden state in tests.** Side-effecting resources (SMS ledger, alert sinks) are injected in tests so nothing writes to real runtime files — a lesson learned the hard way (see below).
 
 ## Design decisions
 
 The full log with dates and rationale is in [docs/decisions.md](docs/decisions.md). The load-bearing ones:
 
-- **Config over code.** The shared prompt craft is engine-owned and deliberately *not* client-configurable — configurability there would recreate the bespoke-per-client trap the kit exists to escape.
+- **Config over code.** The shared prompt craft is engine-owned and deliberately *not* client-configurable — configurability there would recreate the bespoke-per-client trap the kit exists to escape. (Unchanged through eval v2.)
 - **Deterministic pipeline; the LLM owns dialogue only.** Everything outside the live conversation is plain, testable Python.
+- **Deterministic layers gate; the judge advises.** Static checks and the synthetic-fixture suite gate CI; the transcript, latency, and LLM-judge layers run advisory over real calls — and the judge needs an API key CI intentionally doesn't have.
+- **Citation enforcement over trust.** The LLM judge is structurally prevented from asserting a claim it can't quote verbatim from the transcript — an unverifiable "fail" is downgraded to its own finding, not believed.
 - **Lockfile idempotency + dry-run default.** Plans diff desired vs. live and converge to `NOOP`; the default command mutates nothing.
 - **caller/derived + role markers on post_call fields.** These decide what the agent asks for vs. summarizes, and which fields drive SMS — deterministically.
 - **Sanitized-public / private-config split.** The example config is fictional; real configs, lockfiles, capture dumps, and the SMS ledger are all gitignored.
@@ -199,11 +209,14 @@ Written from this build's actual scars.
 - **An invented voice id nearly broke a live apply.** I'd put a placeholder `voice_id` (`retell-Marta`) in the example that didn't exist on the account. It would have failed `create-agent` *after* the LLM was already created, orphaning a resource with no lockfile entry. I caught it by pre-flighting the voice against `list-voices` before the first real deploy. What I'd do differently: bake that pre-flight into `plan` itself (it's on the roadmap).
 - **A specified warning got silently dropped.** An `sms_consent` deploy warning was called for in one step and I built the deploy without it, only catching it a step later when the plan didn't match the expected output. Tests were green — they just didn't cover a thing that was never written. What I'd do differently: check deliverables against the task's own checklist, not only against "does the suite pass."
 - **Paginated list endpoints bit me twice.** `list-agents` returns `{"items": [...]}` and Retell's `v3/list-calls` also returns `{"items": [...]}`, but I first parsed `{"agents"...}` / `{"calls"...}` and got zero results both times — once silently reporting "no agents," once "0 calls." What I'd do differently: never assume a list endpoint returns a bare array; log the envelope keys the first time you hit a new one.
+- **A golden gate isn't proven until you've watched it fail.** After wiring the synthetic-fixture suite into CI, a green run told me nothing — a gate that never fails and a gate that can't fail look identical. So I edited one fixture's expected checks to something wrong, confirmed the runner exited 1 with the precise diff, then reverted and confirmed green again. Only then was it a gate. What I'd do differently from the start: treat "demonstrate the failure path" as part of shipping any gate, not an afterthought.
+- **An LLM judge has to be *structurally* barred from unverifiable claims.** Prompting a model to "only report what you can cite" is not enough — it will still occasionally assert a confident, ungrounded "fail." The fix that actually holds is mechanical: every fail verdict must include a quote, and the runner checks that quote appears verbatim in a cited turn; if it doesn't, the finding is downgraded to `judge_citation_unverified` regardless of how sure the model sounded. The discrimination proof is a synthetic test that feeds a fabricated quote and asserts the downgrade — because the five real calls all passed and couldn't prove it.
+- **A same-slug fingerprint collision, caught before anything depended on it.** Run records first keyed prompt fingerprints by `slug/language`, but `client.example.yaml` and a local `clients/acme-wellness.yaml` both carry slug `acme-wellness`, so their fingerprints silently overwrote each other in one run's record. I caught it while eyeballing a record before building `compare_runs.py` on top of those keys. Fix: key by `path::language` instead. What I'd do differently: sanity-read the artifact a new tool will consume *before* writing the tool, not after it misbehaves.
 
 ## Roadmap
 
-Deferred, with rationale, in [docs/decisions.md](docs/decisions.md#roadmap-deferred-not-built): an LLM-judge eval layer, voice pre-flight inside `plan`, incremental per-language lockfile writes, field-ownership / explicit-unset in the differ, first-class delete/deprovision, an hours "closed day" model, per-client SMS numbers, and a stable (named-tunnel / VPS) home for the webhook service.
+Deferred, with rationale, in [docs/decisions.md](docs/decisions.md#roadmap-deferred-not-built): voice pre-flight inside `plan`, incremental per-language lockfile writes, field-ownership / explicit-unset in the differ, first-class delete/deprovision, an hours "closed day" model, per-client SMS numbers, and a stable (named-tunnel / VPS) home for the webhook service. (The LLM-judge eval layer, previously listed here, shipped as Layer 4 — see below.)
 
 ## Proof, not claims
 
-The repo *is* the proof: 137 passing tests, a CI-gated static-eval, and a fresh-clone deployment exercised end-to-end (above). The eval harness has been run against real calls placed to the live Acme test agents (all clean). Deployment history for real clients is private by design — see [docs/case-studies/](docs/case-studies/) for a truthful index without client data.
+The repo *is* the proof: 196 passing tests, a CI-gated static-eval and golden fixture suite, and a fresh-clone deployment exercised end-to-end (above). The advisory layers have been run against the real Acme test calls: the transcript and judge layers came back clean — the judge's discrimination power is proven by synthetic tests, not by real catches — while the latency layer caught a genuine budget breach (one captured call's e2e p90 of 4414 ms exceeds the 4000 ms target). Deployment history for real clients is private by design — see [docs/case-studies/](docs/case-studies/) for a truthful index without client data.

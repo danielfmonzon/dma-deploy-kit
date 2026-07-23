@@ -187,6 +187,47 @@ python evals/run_transcripts.py               # run checks, print per-call verdi
 `config/clients/acme-wellness.lock.json`; it will not fetch calls for any other
 agent. Transcripts are saved under `capture/calls/` (gitignored).
 
+**Layer 3 — latency budget checks** (advisory, no network — reads the fetched calls):
+
+```bash
+python evals/run_latency.py               # per-call e2e/llm/tts/asr vs. budget
+python evals/run_latency.py --strict      # exit 1 on any breach (default: advisory, exit 0)
+```
+
+Compares each call's latency percentiles against a documented `LatencyBudget`
+(initial operating targets grounded in voice-UX norms — tunable engine defaults,
+not a vendor SLA). Over-budget metrics and missing latency data are surfaced as
+findings; the runner stays advisory (exit 0) unless `--strict` is passed.
+
+**Layer 4 — judged evals** (advisory, **requires `ANTHROPIC_API_KEY`**):
+
+```bash
+python evals/run_judge.py --dry-run       # keyless smoke test, no network
+python evals/run_judge.py --max-calls 5   # real run: judges up to N calls
+python evals/run_judge.py --strict        # exit 1 on findings (default: advisory, exit 0)
+```
+
+An LLM judges each transcript against a fixed rubric (booking intent handled,
+hallucinated commitments vs. the business facts, unresolved caller requests). Every
+"fail" must quote a verbatim span from a cited turn — a claim the judge can't ground
+in the transcript is downgraded to a `judge_citation_unverified` finding rather than
+asserted. `--max-calls` caps how many calls are judged per run (cost control) and
+`--dry-run` runs a canned all-pass judge with no network or key. **This layer sends
+transcript content to the Anthropic API**, so it is advisory-only and never runs in
+CI (CI has no key and must never need one).
+
+**Golden fixture suite** (CI gate) — proves the checks still discriminate:
+
+```bash
+python evals/run_fixtures.py              # replay layer 2 + 3 checks over synthetic calls
+```
+
+`evals/fixtures/*.json` are fully synthetic calls, each pinning the exact check
+names it must produce. The runner replays the transcript and latency checks against
+them and exits nonzero on any mismatch, malformed fixture, or typo'd expected check
+name — so a broken check is caught on every push, not just when a real call happens
+to exercise it. This is the second CI gate (alongside Layer 1).
+
 **Comparing runs — regression check** (pure reader, no network):
 
 Every runner writes a JSON *run record* under `var/evals/runs/`. `compare_runs.py`
@@ -212,19 +253,3 @@ Exit 0 = OK, 1 = regression (a new finding, printed in full), 2 = usage/selectio
 error (bad args, cross-layer compare, or fewer than two records). A NOTE is printed
 when the two runs used different call sets — finding deltas may then reflect the
 data, not the prompts.
-
-**Judged evals (Layer 4)** — advisory, **requires `ANTHROPIC_API_KEY`**:
-
-```bash
-python evals/run_judge.py --dry-run       # keyless smoke test, no network
-python evals/run_judge.py --max-calls 5   # real run: judges up to N calls
-```
-
-An LLM judges each transcript against a fixed rubric (booking intent handled,
-hallucinated commitments vs. the business facts, unresolved caller requests). Every
-"fail" must quote a verbatim span from a cited turn — a claim the judge can't ground
-in the transcript is downgraded to a `judge_citation_unverified` finding rather than
-asserted. `--max-calls` caps how many calls are judged per run (cost control) and
-`--dry-run` runs a canned all-pass judge with no network or key. **This layer sends
-transcript content to the Anthropic API**, so it is advisory-only and never runs in
-CI (CI has no key and must never need one). Add `--strict` to exit 1 on findings.
