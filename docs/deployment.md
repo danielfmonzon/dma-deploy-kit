@@ -212,3 +212,19 @@ Exit 0 = OK, 1 = regression (a new finding, printed in full), 2 = usage/selectio
 error (bad args, cross-layer compare, or fewer than two records). A NOTE is printed
 when the two runs used different call sets — finding deltas may then reflect the
 data, not the prompts.
+
+**Judged evals (Layer 4)** — advisory, **requires `ANTHROPIC_API_KEY`**:
+
+```bash
+python evals/run_judge.py --dry-run       # keyless smoke test, no network
+python evals/run_judge.py --max-calls 5   # real run: judges up to N calls
+```
+
+An LLM judges each transcript against a fixed rubric (booking intent handled,
+hallucinated commitments vs. the business facts, unresolved caller requests). Every
+"fail" must quote a verbatim span from a cited turn — a claim the judge can't ground
+in the transcript is downgraded to a `judge_citation_unverified` finding rather than
+asserted. `--max-calls` caps how many calls are judged per run (cost control) and
+`--dry-run` runs a canned all-pass judge with no network or key. **This layer sends
+transcript content to the Anthropic API**, so it is advisory-only and never runs in
+CI (CI has no key and must never need one). Add `--strict` to exit 1 on findings.

@@ -25,7 +25,7 @@ from pathlib import Path
 
 from runlog import DEFAULT_RUNS_DIR, RunRecord, read_run_record
 
-LAYERS = ["static", "transcript", "latency", "fixtures"]
+LAYERS = ["static", "transcript", "latency", "fixtures", "judge"]
 
 
 def _canonical(finding: dict) -> tuple:
