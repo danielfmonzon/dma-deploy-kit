@@ -186,3 +186,29 @@ python evals/run_transcripts.py               # run checks, print per-call verdi
 `fetch_calls.py` is hard-restricted to the agent_ids in
 `config/clients/acme-wellness.lock.json`; it will not fetch calls for any other
 agent. Transcripts are saved under `capture/calls/` (gitignored).
+
+**Comparing runs — regression check** (pure reader, no network):
+
+Every runner writes a JSON *run record* under `var/evals/runs/`. `compare_runs.py`
+diffs two records of the same layer and flags a **regression only when a check
+newly fires** — prompt fingerprints may change freely, so a prompt edit with no
+new finding is not a regression.
+
+```bash
+# explicit: baseline vs candidate
+python evals/compare_runs.py var/evals/runs/<old>.json var/evals/runs/<new>.json
+
+# or just the two most recent records of a layer
+python evals/compare_runs.py --layer static --latest
+```
+
+Example verdict:
+
+```
+VERDICT: OK — no new findings (1 resolved, 3 persisting)
+```
+
+Exit 0 = OK, 1 = regression (a new finding, printed in full), 2 = usage/selection
+error (bad args, cross-layer compare, or fewer than two records). A NOTE is printed
+when the two runs used different call sets — finding deltas may then reflect the
+data, not the prompts.
