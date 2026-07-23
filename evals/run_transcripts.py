@@ -3,15 +3,21 @@
 Loads config/clients/acme-wellness.yaml, iterates capture/calls/*.json, resolves
 each call's language from the lockfile agent_id, runs the checks, and prints a
 per-call verdict table plus a summary.
+
+Writes an eval run record (see runlog.py). By default the runner is advisory and
+always exits 0; pass --strict to exit 1 when any findings are present.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
 import transcript_checks as tc
+from runlog import DEFAULT_RUNS_DIR, RunRecord, prompt_fingerprint, write_run_record
 
+from dma_deploy_kit.agent.prompt import compile_prompt
 from dma_deploy_kit.config import load_client_config
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -32,7 +38,21 @@ def turns_from_call(call: dict) -> list[dict]:
     return [{"role": t.get("role"), "content": t.get("content") or ""} for t in obj]
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=DEFAULT_RUNS_DIR,
+        help="directory for eval run records (default: var/evals/runs)",
+    )
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit 1 if any findings (default: advisory, always exit 0)",
+    )
+    args = parser.parse_args(argv)
+
     if not CONFIG_PATH.exists():
         print(f"No config at {CONFIG_PATH}; nothing to run.")
         return 0
@@ -49,6 +69,7 @@ def main() -> int:
     print("-" * 78)
 
     all_findings: list[tuple[str, tc.TranscriptFinding]] = []
+    flat_findings: list[tc.TranscriptFinding] = []
     for path in call_files:
         call = json.loads(path.read_text(encoding="utf-8"))
         call_id = call.get("call_id", path.stem)
@@ -64,6 +85,7 @@ def main() -> int:
         print(f"{call_id:<34} {language:<12} {len(turns):>5}  {verdict}")
         for f in findings:
             all_findings.append((call_id, f))
+        flat_findings.extend(findings)
 
     print("\n" + "=" * 78)
     if not all_findings:
@@ -74,7 +96,21 @@ def main() -> int:
             print(f"\n  [{call_id}] {f.check} (turn {f.turn_index}): {f.message}")
             if f.quote:
                 print(f"      quote: {f.quote!r}")
-    return 0
+
+    fingerprints = {
+        f"{config.client.slug}/{lp.code}": prompt_fingerprint(compile_prompt(config, lp))
+        for lp in config.languages
+    }
+    record = RunRecord.create(
+        layer="transcript",
+        prompt_fingerprints=fingerprints,
+        sources=[p.name for p in call_files],
+        findings=flat_findings,
+    )
+    record_path = write_run_record(record, args.out_dir)
+    print(f"run record: {record_path}")
+
+    return 1 if (args.strict and flat_findings) else 0
 
 
 if __name__ == "__main__":
